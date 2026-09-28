@@ -13,6 +13,7 @@ import re
 import uuid
 import time
 import threading
+import math
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -177,6 +178,32 @@ def _extract_json_call(text: str) -> dict | None:
     return _parse_text_call(text)[0]
 
 
+def _env_number(name, default, *, integer=False):
+    try:
+        return (int if integer else float)(os.getenv(name, default))
+    except (ValueError, TypeError, OverflowError):
+        raise ValueError(f"Invalid configuration: {name}") from None
+
+
+def _bounded_number(value, name, lower, upper=None, *, integer=False, exclusive_lower=False):
+    valid_type = type(value) is int if integer else type(value) in (int, float)
+    try:
+        valid = valid_type and math.isfinite(value) and (value > lower if exclusive_lower else value >= lower)
+        valid = valid and (upper is None or value <= upper)
+    except (TypeError, OverflowError):
+        valid = False
+    if not valid:
+        raise ValueError(f"Invalid configuration: {name}")
+    return value
+
+
+def _env_bool(name, default):
+    value = os.getenv(name, default).strip().lower()
+    if value not in {"0", "1", "true", "false"}:
+        raise ValueError(f"Invalid configuration: {name}")
+    return value in {"1", "true"}
+
+
 class NvidiaLLM:
     label = "NVIDIA Nemotron (build.nvidia.com)"
 
@@ -185,13 +212,19 @@ class NvidiaLLM:
         from openai import OpenAI
         from .policy import Policy
 
-        request_timeout = float(os.getenv("NVIDIA_REQUEST_TIMEOUT", "60")) if request_timeout is None else request_timeout
-        max_retries = int(os.getenv("NVIDIA_MAX_RETRIES", "2")) if max_retries is None else max_retries
-        if not 0 < request_timeout <= 120 or not 0 <= max_retries <= 3 or backoff_seconds < 0:
-            raise ValueError("invalid request limits")
-        self.request_timeout = request_timeout
-        self.max_retries = max_retries
-        self.backoff_seconds = backoff_seconds
+        request_timeout = _env_number("NVIDIA_REQUEST_TIMEOUT", "60") if request_timeout is None else request_timeout
+        max_retries = _env_number("NVIDIA_MAX_RETRIES", "2", integer=True) if max_retries is None else max_retries
+        self.request_timeout = _bounded_number(request_timeout, "NVIDIA_REQUEST_TIMEOUT", 0, 120, exclusive_lower=True)
+        self.max_retries = _bounded_number(max_retries, "NVIDIA_MAX_RETRIES", 0, 3, integer=True)
+        self.backoff_seconds = _bounded_number(backoff_seconds, "backoff_seconds", 0)
+        self.native_tools = _env_bool("NVIDIA_NATIVE_TOOLS", "1")
+        self.enable_thinking = _env_bool("NVIDIA_ENABLE_THINKING", "0")
+        # Installed SDK: temperature is 0..2; top_p is probability mass (0..1).
+        # Existing defaults remain distinct from the model card's sampling advice.
+        self.temperature = _bounded_number(_env_number("NVIDIA_TEMPERATURE", "0.6"), "NVIDIA_TEMPERATURE", 0, 2)
+        self.top_p = _bounded_number(_env_number("NVIDIA_TOP_P", "0.95"), "NVIDIA_TOP_P", 0, 1)
+        self.max_tokens = _bounded_number(_env_number("NVIDIA_MAX_TOKENS", "2048", integer=True),
+                                          "NVIDIA_MAX_TOKENS", 128, 8192, integer=True)
         self.deadline = None
         self._api_key = api_key or os.environ["NVIDIA_API_KEY"]
         self._boundary_policy = Policy(Path(__file__).resolve().parent.parent / "policy.yaml", enabled=True)
@@ -200,14 +233,6 @@ class NvidiaLLM:
         self.model = model or os.getenv("NVIDIA_MODEL", DEFAULT_MODEL)
         self.client = OpenAI(base_url=os.getenv("NVIDIA_BASE_URL", BASE_URL),
                              api_key=self._api_key, timeout=request_timeout, max_retries=0)
-        self.native_tools = os.getenv("NVIDIA_NATIVE_TOOLS", "1") != "0"
-        # 기존 프로젝트 샘플링 값. 공식 모델 카드 권장값(1.0/0.95)과 구분한다.
-        self.temperature = float(os.getenv("NVIDIA_TEMPERATURE", "0.6"))
-        self.top_p = float(os.getenv("NVIDIA_TOP_P", "0.95"))
-        self.enable_thinking = os.getenv("NVIDIA_ENABLE_THINKING", "0") == "1"
-        self.max_tokens = int(os.getenv("NVIDIA_MAX_TOKENS", "2048"))
-        if not 128 <= self.max_tokens <= 8192:
-            raise ValueError("NVIDIA_MAX_TOKENS must be between 128 and 8192")
         self.label = f"{self.model} @ build.nvidia.com"
         endpoint = urlsplit(os.getenv("NVIDIA_BASE_URL", BASE_URL))
         self.telemetry = dict(api_calls=0, prompt_tokens=0, completion_tokens=0, total_tokens=0, usage_responses=0,

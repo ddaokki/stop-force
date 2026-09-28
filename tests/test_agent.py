@@ -302,6 +302,50 @@ class AgentTests(unittest.TestCase):
                 self.assertEqual(agent.report["termination"], "finish")
                 self.assertEqual(agent.stats["tool_errors"], 1)
 
+    def test_deep_invalid_arguments_are_rejected_before_recursive_processing(self):
+        nested = "untrusted payload"
+        for _ in range(1500):
+            nested = [nested]
+        for args in ({"service": nested}, {"extra": nested}):
+            with self.subTest(field=next(iter(args))):
+                agent = make_agent(FakeLLM([call("read_logs", args), call("finish", FINISH)]))
+                agent.run()
+                self.assertEqual(agent.report["termination"], "finish")
+                self.assertEqual(agent.stats["tool_errors"], 1)
+                self.assertEqual(agent.cluster.attempted, [])
+                self.assertNotIn("untrusted payload", json.dumps(agent.export()))
+
+    def test_unused_call_metadata_is_not_copied_into_history(self):
+        nested = "unused metadata"
+        for _ in range(1500):
+            nested = [nested]
+        agent = make_agent(FakeLLM([call("list_services", {}, metadata=nested), call("finish", FINISH)]))
+        agent.run()
+        self.assertEqual(agent.report["termination"], "finish")
+        self.assertEqual(agent.stats["tool_errors"], 0)
+        self.assertEqual(len(agent.observations), 1)
+
+    def test_normalized_call_ids_are_unique_and_results_remain_linked(self):
+        cases = [
+            ([("duplicate_1_1", {}), ("duplicate_1_1", {})], 1),
+            ([("call_1_1", {}), (None, {})], 0),
+            ([("nvapi-fixture-one", {}), ("nvapi-fixture-two", {})], 0),
+        ]
+        for supplied, expected_errors in cases:
+            with self.subTest(ids=[item[0] for item in supplied]):
+                batch = {"tool_calls": [{"id": identifier, "name": "list_services", "arguments": args}
+                                        for identifier, args in supplied]}
+                agent = make_agent(FakeLLM([batch, call("finish", FINISH)]))
+                agent.run()
+                assistant = next(m for m in agent.messages if m.get("tool_calls"))
+                ids = [c["id"] for c in assistant["tool_calls"]]
+                results = [m["tool_call_id"] for m in agent.messages if m["role"] == "tool"]
+                self.assertEqual(len(ids), len(set(ids)))
+                self.assertEqual(results, ids)
+                self.assertEqual(agent.stats["tool_errors"], expected_errors)
+                self.assertNotIn("nvapi-fixture", json.dumps(agent.export()))
+                self.assertNotIn("nvapi-fixture", json.dumps(agent.messages))
+
 
 if __name__ == "__main__":
     unittest.main()

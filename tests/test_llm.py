@@ -2,6 +2,7 @@ import json
 import time
 import unittest
 import threading
+import os
 from types import SimpleNamespace as NS
 from unittest.mock import Mock, patch
 
@@ -256,6 +257,70 @@ class NvidiaTests(unittest.TestCase):
         for secret in ("hunter2", "test-api-secret", "sk_live_abc123", "private-token", "structured-secret"):
             self.assertNotIn(secret, sent)
         self.assertEqual(json.dumps(messages), original)
+
+
+class ConfigurationTests(unittest.TestCase):
+    def test_invalid_environment_rejected_before_client_creation(self):
+        cases = {
+            "NVIDIA_TEMPERATURE": ["NaN", "Infinity", "-Infinity", "-0.1", "2.1", "input-secret"],
+            "NVIDIA_TOP_P": ["NaN", "Infinity", "-0.1", "1.1", "input-secret"],
+            "NVIDIA_REQUEST_TIMEOUT": ["NaN", "Infinity", "0", "121", "input-secret"],
+            "NVIDIA_MAX_RETRIES": ["NaN", "Infinity", "-1", "4", "1.5", "input-secret"],
+            "NVIDIA_MAX_TOKENS": ["NaN", "Infinity", "127", "8193", "1.5", "input-secret"],
+            "NVIDIA_NATIVE_TOOLS": ["", "2", "input-secret"],
+            "NVIDIA_ENABLE_THINKING": ["", "2", "input-secret"],
+        }
+        for name, values in cases.items():
+            for value in values:
+                with self.subTest(name=name, value=value), patch.dict(os.environ, {name: value}, clear=True), patch("openai.OpenAI") as ctor:
+                    with self.assertRaises(ValueError) as caught:
+                        NvidiaLLM(api_key="fake")
+                    self.assertEqual(str(caught.exception), f"Invalid configuration: {name}")
+                    ctor.assert_not_called()
+
+    def test_invalid_constructor_numbers_rejected_before_client_creation(self):
+        cases = {
+            "request_timeout": [True, False, "input-secret", float("nan"), float("inf"), 0, 121],
+            "max_retries": [True, False, "input-secret", 1.5, 2.0, float("nan"), float("inf"), -1, 4],
+            "backoff_seconds": [True, False, "input-secret", float("nan"), float("inf"), -1],
+        }
+        names = {"request_timeout": "NVIDIA_REQUEST_TIMEOUT", "max_retries": "NVIDIA_MAX_RETRIES", "backoff_seconds": "backoff_seconds"}
+        for name, values in cases.items():
+            for value in values:
+                with self.subTest(name=name, value=value), patch.dict(os.environ, {}, clear=True), patch("openai.OpenAI") as ctor:
+                    with self.assertRaises(ValueError) as caught:
+                        NvidiaLLM(api_key="fake", **{name: value})
+                    self.assertEqual(str(caught.exception), f"Invalid configuration: {names[name]}")
+                    ctor.assert_not_called()
+
+    def test_default_configuration_preserved(self):
+        with patch.dict(os.environ, {}, clear=True), patch("openai.OpenAI") as ctor:
+            llm = NvidiaLLM(api_key="fake")
+        self.assertEqual((llm.request_timeout, llm.max_retries, llm.backoff_seconds), (60, 2, 0.5))
+        self.assertEqual((llm.temperature, llm.top_p, llm.max_tokens), (0.6, 0.95, 2048))
+        self.assertTrue(llm.native_tools)
+        self.assertFalse(llm.enable_thinking)
+        self.assertEqual(ctor.call_args.kwargs["max_retries"], 0)
+
+    def test_valid_numeric_boundaries(self):
+        for temperature, top_p, tokens, timeout, retries in (("0", "0", "128", 0.001, 0), ("2", "1", "8192", 120, 3)):
+            settings = {"NVIDIA_TEMPERATURE": temperature, "NVIDIA_TOP_P": top_p, "NVIDIA_MAX_TOKENS": tokens}
+            with self.subTest(settings=settings), patch.dict(os.environ, settings, clear=True), patch("openai.OpenAI") as ctor:
+                llm = NvidiaLLM(api_key="fake", request_timeout=timeout, max_retries=retries, backoff_seconds=0)
+                ctor.assert_called_once()
+                self.assertEqual((llm.temperature, llm.top_p, llm.max_tokens), (float(temperature), float(top_p), int(tokens)))
+                self.assertEqual((llm.request_timeout, llm.max_retries, llm.backoff_seconds), (timeout, retries, 0))
+
+    def test_explicit_boolean_modes(self):
+        for value, expected in (("0", False), ("1", True), (" true ", True), (" FALSE ", False), ("TrUe", True)):
+            settings = {"NVIDIA_NATIVE_TOOLS": value, "NVIDIA_ENABLE_THINKING": value}
+            with self.subTest(value=value), patch.dict(os.environ, settings, clear=True), patch("openai.OpenAI"):
+                llm = NvidiaLLM(api_key="fake")
+                llm.client.chat.completions.create.return_value = response()
+                result = llm.chat([], [])
+                self.assertEqual(result["native"], expected)
+                self.assertEqual(llm.enable_thinking, expected)
+                self.assertEqual(llm.client.chat.completions.create.call_args.kwargs["extra_body"]["chat_template_kwargs"]["enable_thinking"], expected)
 
 
 class ScriptedTests(unittest.TestCase):

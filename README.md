@@ -48,6 +48,8 @@ NVIDIA_API_KEY=발급받은_실제_키
 NVIDIA_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b
 ```
 
+`NVIDIA_NATIVE_TOOLS`와 `NVIDIA_ENABLE_THINKING`은 `0`/`1` 또는 `false`/`true`로 설정합니다. 대소문자와 앞뒤 공백은 허용합니다. 숫자 설정은 요청 전에 검사하며, temperature는 0~2, top_p는 0~1, 요청 시간은 0초 초과~120초, 재시도는 정수 0~3회, max_tokens는 정수 128~8192를 허용합니다. NaN, Infinity와 범위를 벗어난 값은 실행을 시작하지 않습니다.
+
 키가 없으면 실제 모드를 시작하지 않습니다. 유효하지 않은 키의 API 오류도 숨기지 않습니다. 사전 작성 시나리오로 조용히 대체하지 않으며, 오프라인 실행은 명시적으로 선택합니다. 모델 정보는 [NVIDIA 모델 페이지](https://build.nvidia.com/nvidia/nemotron-3.5-lightning-30b-a3b/build)와 [공식 Nemotron 문서](https://github.com/NVIDIA-NeMo/Nemotron/blob/main/usage-cookbook/Nemotron-3.5-Lightning/README.md)를 참고하세요. 공식 문서는 구조화된 도구 호출 지원을 설명하지만 이 저장소의 실제 요청 성공은 별도 실행 증거로 확인해야 합니다.
 
 ## CLI와 보고서
@@ -97,6 +99,8 @@ JSON 도구 인자의 반복 문자열과 문자 그대로의 `<think>`는 보�
 
 텍스트 호출 프로토콜에서 한 응답에 JSON 호출이 여러 개 있으면 첫 명령을 선택하지 않고 검증 오류로 돌려줍니다. JSON 문자열 안의 코드 블록 표시와 괄호는 인자로 보존합니다. 텍스트 호출과 네이티브 도구 인자 모두 중복 JSON 키와 비표준 NaN/Infinity 값을 거부합니다.
 
+도구 인자는 재귀적 가림과 대화 저장 전에 형식을 검사합니다. 문자열 대신 깊게 중첩된 배열을 보내도 해당 호출을 검증 오류로 처리하고 이후 종료 보고서를 만들 수 있습니다. 쓰지 않는 응답 메타데이터는 대화에 복사하지 않습니다. 중복 호출 ID는 오류로 처리하되 결과를 연결할 ID는 항상 고유하게 만들며, 비밀값 가림으로 서로 다른 ID가 충돌하는 경우도 방지합니다.
+
 명령 실행은 성공 여부와 출력 본문을 분리해서 반환합니다. 로그가 `ERROR`로 시작해도 조회에 성공했으면 정상 조회로 기록합니다. 실제 명령 실패와 예외는 도구 오류 제한에 포함합니다. 승인 직후 기한이 만료되거나 취소되면 승인 여부는 보존하고 실행 상태를 `not_executed`로 확정해, 실행하지 않은 작업이 대기 중으로 남지 않도록 합니다.
 
 외부 모델로 보내는 메시지와 도구 정의는 재귀적으로 비밀값을 가립니다. 보고서는 모델의 제안과 실제 실행을 구분하며, 최종 상태는 `recovered`, `mitigated`, `unresolved`, `destroyed`로 표시합니다. 실제 API 요청 횟수(실패 포함), 제공된 토큰 사용량, 요청 시간, 모델, 엔드포인트와 호출 방식도 기록합니다. `usage_responses`가 API 요청 수보다 작으면 토큰 합계는 응답이 확인된 요청만 포함합니다. 기본 샘플링은 temperature 0.6, top_p 0.95, max_tokens 2048, thinking OFF입니다. [NVIDIA 공식 설정 예시](https://github.com/NVIDIA-AI-Blueprints/nemotron-voice-agent/blob/main/docs/how-to/configure-llm.md)의 thinking 옵션을 사용하며 모델의 내부 추론 원문은 저장하지 않습니다.
@@ -113,7 +117,7 @@ JSON 도구 인자의 반복 문자열과 문자 그대로의 `<think>`는 보�
 
 차단과 거부는 명령 시도 수, 무승인 실행은 성공한 실행 수를 분모로 계산합니다. 비밀값 누출 검사는 평가 코드에 열거한 합성 표식에 한정합니다. 고정 목록 통과를 모든 공격이나 모든 비밀값에 대한 보장으로 해석하지 않습니다. 테스트와 사전 작성 평가의 실제 NVIDIA API 호출 수는 0입니다.
 
-검증 환경: Windows, Python 3.12.9, OpenAI SDK 3.19.2, Streamlit 1.64.0. 최신 자동 테스트 68개(화면 9가지 조합, 만료/중단, JSON 해석과 CLI 저장 검사 포함), 평가 9개 사례와 고정 명령 20개 조합이 통과했습니다. [최신 검증 범위와 소스 해시](artifacts/protocol-validation.json)를 제공합니다. [수정 전후 9개 재현 결과](artifacts/baseline.json), [1차 검증](artifacts/validation.json), [2차 검증](artifacts/additional-validation.json), [3차 검증](artifacts/execution-validation.json)은 각 개선 당시의 기록입니다. 추가 개선은 오프라인과 API 대역으로 검증했으며 실제 NVIDIA API를 다시 호출하지 않았습니다. macOS와 Linux에서의 실행은 검증하지 않았습니다.
+검증 환경: Windows, Python 3.12.9, OpenAI SDK 3.19.2, Streamlit 1.64.0. 최신 자동 테스트 76개(화면 9가지 조합, 만료/중단, JSON 해석, CLI 저장, 호출 ID와 설정 검사 포함), 평가 9개 사례와 고정 명령 20개 조합이 통과했습니다. [최신 검증 범위와 소스 해시](artifacts/input-validation.json)를 제공합니다. [수정 전후 9개 재현 결과](artifacts/baseline.json), [1차 검증](artifacts/validation.json), [2차 검증](artifacts/additional-validation.json), [3차 검증](artifacts/execution-validation.json), [4차 검증](artifacts/protocol-validation.json)은 각 개선 당시의 기록입니다. 추가 개선은 오프라인과 API 대역으로 검증했으며 실제 NVIDIA API를 다시 호출하지 않았습니다. macOS와 Linux에서의 실행은 검증하지 않았습니다.
 
 ## 주요 파일
 

@@ -116,6 +116,7 @@ class Agent:
         self._denied: set = set()
         self._completed: dict = {}
         self._seen_calls: set[str] = set()
+        self._used_call_ids: set[str] = set()
         self._on_event = None
         if hasattr(llm, "set_deadline"):
             llm.set_deadline(self._deadline)
@@ -255,25 +256,44 @@ class Agent:
         if len(calls) + self.stats["tool_calls"] > self.max_tool_calls:
             self._finish("max_tool_calls", reason=f"도구 호출 한도 {self.max_tool_calls}회 초과")
             return
-        normalized = []
-        for index, call in enumerate(calls):
-            if not isinstance(call, dict):
-                call = {"name": "invalid", "arguments": None, "parse_error": "도구 호출은 객체여야 함"}
-            call = dict(call)
-            if not isinstance(call.get("name"), str) or not call["name"]:
-                call.update(name="invalid", parse_error="도구 이름은 문자열이어야 함")
-            if not isinstance(call.get("id"), str) or not call["id"]:
-                call["id"] = f"call_{self.steps}_{index}"
-            if call["id"] in self._seen_calls:
-                call.update(id=f"duplicate_{self.steps}_{index}", parse_error="재사용된 도구 호출 ID")
-            self._seen_calls.add(call["id"])
-            normalized.append(self._safe(call))
+        normalized = [self._normalize_call(call, index) for index, call in enumerate(calls)]
         self.messages.append({
             "role": "assistant", "content": self._safe(content),
             "tool_calls": [{"id": c["id"], "type": "function", "function": {
                 "name": c["name"], "arguments": json.dumps(c.get("arguments"), ensure_ascii=False)}} for c in normalized],
         })
         self.queue = normalized
+
+    def _normalize_call(self, call, index):
+        if not isinstance(call, dict):
+            call = {"name": "invalid", "arguments": None, "parse_error": "도구 호출은 객체여야 함"}
+        # Keep only protocol fields and validate before recursive redaction or
+        # serialization. Invalid, deeply nested arguments never enter history.
+        item = {"name": call.get("name"), "arguments": call.get("arguments")}
+        if call.get("parse_error"):
+            item["parse_error"] = call["parse_error"] if isinstance(call["parse_error"], str) else "잘못된 파싱 오류 형식"
+        if not isinstance(item["name"], str) or not item["name"]:
+            item.update(name="invalid", parse_error="도구 이름은 문자열이어야 함")
+        raw_id = call.get("id")
+        base_id = f"call_{self.steps}_{index}"
+        candidate = base_id
+        if isinstance(raw_id, str) and raw_id:
+            if raw_id in self._seen_calls or raw_id in self._used_call_ids:
+                item["parse_error"] = "재사용된 도구 호출 ID"
+            else:
+                safe_id = self._safe(raw_id)
+                candidate = raw_id if safe_id == raw_id else base_id
+            self._seen_calls.add(raw_id)
+        suffix = 0
+        while candidate in self._used_call_ids:
+            suffix += 1
+            candidate = f"{base_id}_{suffix}"
+        item["id"] = candidate
+        self._used_call_ids.add(candidate)
+        error = self._validate(item)
+        if error:
+            item.update(arguments=None, parse_error=error)
+        return self._safe(item)
 
     def _tool_result(self, call, content: str):
         safe = self._safe(content)
