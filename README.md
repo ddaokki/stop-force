@@ -99,6 +99,8 @@ JSON 도구 인자의 반복 문자열과 문자 그대로의 `<think>`는 보�
 
 텍스트 호출 프로토콜에서 한 응답에 JSON 호출이 여러 개 있으면 첫 명령을 선택하지 않고 검증 오류로 돌려줍니다. JSON 문자열 안의 코드 블록 표시와 괄호는 인자로 보존합니다. 텍스트 호출과 네이티브 도구 인자 모두 중복 JSON 키와 비표준 NaN/Infinity 값을 거부합니다.
 
+응답의 종료 상태도 도구 해석 전에 확인합니다. 출력 한도에 걸린 응답은 `incomplete_response`, 공급자 필터나 거부 응답은 `refusal`, 종료 상태 누락이나 잘못된 응답 구조는 `response`로 종료합니다. 앞부분의 명령 JSON이 완성돼 있어도 해당 응답에서는 실행하지 않습니다. 자동 재시도나 JSON 전환 없이 보고서를 만들며, 공급자가 반환한 토큰 사용량은 유지합니다.
+
 도구 인자는 재귀적 가림과 대화 저장 전에 형식을 검사합니다. 문자열 대신 깊게 중첩된 배열을 보내도 해당 호출을 검증 오류로 처리하고 이후 종료 보고서를 만들 수 있습니다. 쓰지 않는 응답 메타데이터는 대화에 복사하지 않습니다. 중복 호출 ID는 오류로 처리하되 결과를 연결할 ID는 항상 고유하게 만들며, 비밀값 가림으로 서로 다른 ID가 충돌하는 경우도 방지합니다.
 
 명령 실행은 성공 여부와 출력 본문을 분리해서 반환합니다. 로그가 `ERROR`로 시작해도 조회에 성공했으면 정상 조회로 기록합니다. 실제 명령 실패와 예외는 도구 오류 제한에 포함합니다. 승인 직후 기한이 만료되거나 취소되면 승인 여부는 보존하고 실행 상태를 `not_executed`로 확정해, 실행하지 않은 작업이 대기 중으로 남지 않도록 합니다.
@@ -117,7 +119,9 @@ JSON 도구 인자의 반복 문자열과 문자 그대로의 `<think>`는 보�
 
 차단과 거부는 명령 시도 수, 무승인 실행은 성공한 실행 수를 분모로 계산합니다. 비밀값 누출 검사는 평가 코드에 열거한 합성 표식에 한정합니다. 고정 목록 통과를 모든 공격이나 모든 비밀값에 대한 보장으로 해석하지 않습니다. 테스트와 사전 작성 평가의 실제 NVIDIA API 호출 수는 0입니다.
 
-검증 환경: Windows, Python 3.12.9, OpenAI SDK 3.19.2, Streamlit 1.64.0. 최신 자동 테스트 76개(화면 9가지 조합, 만료/중단, JSON 해석, CLI 저장, 호출 ID와 설정 검사 포함), 평가 9개 사례와 고정 명령 20개 조합이 통과했습니다. [최신 검증 범위와 소스 해시](artifacts/input-validation.json)를 제공합니다. [수정 전후 9개 재현 결과](artifacts/baseline.json), [1차 검증](artifacts/validation.json), [2차 검증](artifacts/additional-validation.json), [3차 검증](artifacts/execution-validation.json), [4차 검증](artifacts/protocol-validation.json)은 각 개선 당시의 기록입니다. 추가 개선은 오프라인과 API 대역으로 검증했으며 실제 NVIDIA API를 다시 호출하지 않았습니다. macOS와 Linux에서의 실행은 검증하지 않았습니다.
+검증 환경: Windows, Python 3.12.9, OpenAI SDK 3.19.2, Streamlit 1.64.0. 최신 자동 테스트 80개(화면 9가지 조합, 만료/중단, JSON 해석, CLI 저장, 호출 ID와 설정, 응답 종료 상태 검사 포함), 평가 9개 사례와 고정 명령 20개 조합이 통과했습니다. [최신 검증 범위와 소스 해시](artifacts/completion-validation.json)를 제공합니다. [수정 전후 9개 재현 결과](artifacts/baseline.json), [1차 검증](artifacts/validation.json), [2차 검증](artifacts/additional-validation.json), [3차 검증](artifacts/execution-validation.json), [4차 검증](artifacts/protocol-validation.json), [5차 검증](artifacts/input-validation.json)은 각 개선 당시의 기록입니다. 추가 개선은 오프라인과 API 대역으로 검증했으며 실제 NVIDIA API를 다시 호출하지 않았습니다. macOS와 Linux에서의 실행은 검증하지 않았습니다.
+
+핵심 기능 회귀 검사에는 장애 진단, 즉시 완화 조치, 승인 전 실행 보류, 승인 시 복구와 거부 시 완화 유지, 최종 상태와 실행 기록의 일치가 포함됩니다. `NvidiaLLM`에 공급자 모의 응답을 넣어 네이티브/JSON 두 방식과 승인/거부 조합도 검사합니다. 이 검사는 연결 코드와 에이전트 사이의 전체 흐름을 확인하며, 실제 모델의 진단 능력이나 네트워크 연결 검사를 대신하지 않습니다.
 
 ## 주요 파일
 

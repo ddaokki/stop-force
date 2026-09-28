@@ -83,6 +83,38 @@ class LLMError(RuntimeError):
         super().__init__(f"LLM request failed ({category})")
 
 
+def _response_message(response):
+    """Accept only complete, non-refused responses before interpreting any calls."""
+    choices = getattr(response, "choices", None)
+    if not isinstance(choices, list) or not choices:
+        raise LLMError("response")
+    choice = choices[0]
+    message = getattr(choice, "message", None)
+    if message is None:
+        raise LLMError("response")
+    reason = getattr(choice, "finish_reason", None)
+    if reason == "content_filter" or getattr(message, "refusal", None):
+        raise LLMError("refusal")
+    if reason == "length":
+        raise LLMError("incomplete_response")
+    # Non-streaming SDK Choice requires a non-null finish_reason. No observed
+    # provider evidence justifies interpreting a missing termination as complete.
+    if reason not in ("stop", "tool_calls"):
+        raise LLMError("response")
+    if not hasattr(message, "content") or not isinstance(message.content, (str, type(None))):
+        raise LLMError("response")
+    calls = getattr(message, "tool_calls", None)
+    if calls is not None and not isinstance(calls, list):
+        raise LLMError("response")
+    for call in calls or []:
+        function = getattr(call, "function", None)
+        if (function is None or not hasattr(call, "id") or
+                not isinstance(getattr(function, "name", None), str) or
+                not hasattr(function, "arguments")):
+            raise LLMError("response")
+    return message
+
+
 def _classify(exc):
     status = getattr(exc, "status_code", None)
     text = str(exc).lower()
@@ -342,11 +374,11 @@ class NvidiaLLM:
             temperature=self.temperature, top_p=self.top_p, max_tokens=self.max_tokens,
             extra_body={"chat_template_kwargs": {"enable_thinking": self.enable_thinking}},
         )
-        m = r.choices[0].message
+        m = _response_message(r)
         raw_content = _without_thinking(m.content or "")
         content = _clean(raw_content)
         calls = []
-        for tc in m.tool_calls or []:
+        for tc in getattr(m, "tool_calls", None) or []:
             try:
                 args = STRICT_JSON.decode(tc.function.arguments)
                 parse_error = None if isinstance(args, dict) else "arguments_must_be_object"
@@ -390,7 +422,7 @@ class NvidiaLLM:
         r = self._request("json", model=self.model, messages=conv, temperature=self.temperature,
                                                 top_p=self.top_p, max_tokens=self.max_tokens,
                                                 extra_body={"chat_template_kwargs": {"enable_thinking": self.enable_thinking}})
-        raw_content = _without_thinking(r.choices[0].message.content or "")
+        raw_content = _without_thinking(_response_message(r).content or "")
         # Parse data before presentation cleanup: repeated text and literal think
         # tags inside JSON strings are tool arguments, not disposable prose.
         call, visible = _parse_text_call(raw_content)

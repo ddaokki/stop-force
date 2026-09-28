@@ -42,6 +42,16 @@ def make_agent(llm=None, scenario="db_leak", enabled=True, **kwargs):
                  'incident password="test secret value"', **kwargs)
 
 
+def provider_reply(name, args, native, *, finish_reason=None, refusal=None):
+    tool = SimpleNamespace(id="provider_" + name + "_" + str(len(json.dumps(args))),
+                           function=SimpleNamespace(name=name, arguments=json.dumps(args)))
+    message = SimpleNamespace(content="" if native else json.dumps({"tool": name, "args": args}),
+                              tool_calls=[tool] if native else [], refusal=refusal)
+    return SimpleNamespace(choices=[SimpleNamespace(message=message,
+                           finish_reason=finish_reason or ("tool_calls" if native else "stop"))],
+                           usage=SimpleNamespace(prompt_tokens=7, completion_tokens=3, total_tokens=10))
+
+
 class AgentTests(unittest.TestCase):
     def test_all_approved_scenarios(self):
         for scenario in ("db_leak", "bad_deploy", "disk_full"):
@@ -293,7 +303,7 @@ class AgentTests(unittest.TestCase):
                 llm = NvidiaLLM(api_key="test-only-key", backoff_seconds=0)
                 llm.native_tools = False
                 llm.client.chat.completions.create.side_effect = [
-                    SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=text))])
+                    SimpleNamespace(choices=[SimpleNamespace(finish_reason="stop", message=SimpleNamespace(content=text))])
                     for text in (payload, json.dumps({"tool": "finish", "args": FINISH}))]
                 agent = make_agent(llm)
                 agent.run()
@@ -345,6 +355,61 @@ class AgentTests(unittest.TestCase):
                 self.assertEqual(agent.stats["tool_errors"], expected_errors)
                 self.assertNotIn("nvapi-fixture", json.dumps(agent.export()))
                 self.assertNotIn("nvapi-fixture", json.dumps(agent.messages))
+
+    def test_incomplete_or_refused_provider_response_cannot_execute(self):
+        args = {"command": "kubectl rollout restart deployment/payment-worker", "reason": "test"}
+        for native in (True, False):
+            for reason, refusal, expected in (("length", None, "incomplete_response"),
+                                              ("content_filter", None, "refusal"),
+                                              ("stop", "private-refusal-body", "refusal")):
+                with self.subTest(native=native, reason=reason, refusal=bool(refusal)), patch("openai.OpenAI"):
+                    llm = NvidiaLLM(api_key="test-only-key")
+                    llm.native_tools = native
+                    llm.client.chat.completions.create.return_value = provider_reply(
+                        "run_command", args, native, finish_reason=reason, refusal=refusal)
+                    agent = make_agent(llm)
+                    agent.run()
+                    self.assertEqual(agent.cluster.attempted, [])
+                    self.assertEqual(agent.report["termination"], expected)
+                    self.assertEqual(agent.report["recovery_status"], "unresolved")
+                    self.assertTrue(agent.report["human_handoff"])
+                    self.assertEqual(agent.report["telemetry"]["api_calls"], 1)
+                    self.assertEqual(agent.report["telemetry"]["total_tokens"], 10)
+                    self.assertNotIn("private-refusal-body", json.dumps(agent.export()))
+                    self.assertEqual(llm.native_tools, native)
+
+    def test_provider_adapter_core_flow_preserves_approval_and_report(self):
+        plan = [
+            ("list_services", {}),
+            ("read_logs", {"service": "payment-worker"}),
+            ("run_command", {"command": "kubectl rollout restart deployment/payment-worker", "reason": "mitigate"}),
+            ("run_command", {"command": "kubectl rollout undo deployment/payment-worker", "reason": "repair"}),
+            ("get_metrics", {"service": "payment-api"}),
+            ("finish", FINISH),
+        ]
+        for native in (True, False):
+            for approved in (True, False):
+                with self.subTest(native=native, approved=approved), patch("openai.OpenAI"):
+                    llm = NvidiaLLM(api_key="test-only-key")
+                    llm.native_tools = native
+                    llm.client.chat.completions.create.side_effect = [provider_reply(name, args, native) for name, args in plan]
+                    agent = make_agent(llm)
+                    agent.run()
+                    self.assertIsNotNone(agent.pending)
+                    self.assertEqual(agent.cluster.executed, [plan[2][1]["command"]])
+                    self.assertEqual(agent.cluster.health()["recovery_status"], "mitigated")
+                    self.assertTrue(agent.resolve(approved, request_id=agent.pending["id"]))
+                    report = agent.report
+                    self.assertEqual(report["termination"], "finish")
+                    self.assertEqual(report["recovery_status"], "recovered" if approved else "mitigated")
+                    self.assertEqual(report["approvals"][0]["status"], "approved" if approved else "denied")
+                    self.assertEqual(len(agent.cluster.executed), 2 if approved else 1)
+                    self.assertEqual(report["telemetry"]["api_calls"], len(plan))
+                    self.assertEqual(report["telemetry"]["total_tokens"], len(plan) * 10)
+                    self.assertEqual(len(report["observations"]), 3)
+                    events = {event.id: event for event in agent.events}
+                    self.assertTrue(all(events[action["event_id"]].kind == "execution"
+                                        for action in report["actions"] if action["status"] == "succeeded"))
 
 
 if __name__ == "__main__":

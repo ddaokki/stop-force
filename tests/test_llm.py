@@ -13,7 +13,7 @@ from pathlib import Path
 
 def response(content="ok", arguments=None):
     calls = [] if arguments is None else [NS(id="a", function=NS(name="run_command", arguments=arguments))]
-    return NS(choices=[NS(message=NS(content=content, tool_calls=calls))],
+    return NS(choices=[NS(finish_reason="tool_calls" if calls else "stop", message=NS(content=content, tool_calls=calls))],
               usage=NS(prompt_tokens=7, completion_tokens=3, total_tokens=10))
 
 
@@ -59,6 +59,52 @@ class NvidiaTests(unittest.TestCase):
                 llm.chat([], [])
             self.assertEqual(caught.exception.category, category)
             self.assertEqual(llm.telemetry["api_calls"], 3)
+
+    def test_incomplete_and_refused_responses_never_return_calls(self):
+        args = json.dumps({"command": "kubectl rollout restart deployment/payment-worker", "reason": "test"})
+        for native in (True, False):
+            for reason, refusal, category in (("length", None, "incomplete_response"),
+                                               ("content_filter", None, "refusal"),
+                                               ("stop", "private-refusal-secret", "refusal")):
+                with self.subTest(native=native, reason=reason, refusal=refusal):
+                    r = response(arguments=args) if native else response('{"tool":"run_command","args":' + args + '}')
+                    r.choices[0].finish_reason = reason
+                    r.choices[0].message.refusal = refusal
+                    llm = self.make([r])
+                    llm.native_tools = native
+                    with self.assertRaises(LLMError) as caught:
+                        llm.chat([], [])
+                    self.assertEqual(caught.exception.category, category)
+                    self.assertEqual(str(caught.exception), f"LLM request failed ({category})")
+                    self.assertEqual(llm.native_tools, native)
+                    self.assertEqual(llm.client.chat.completions.create.call_count, 1)
+                    self.assertEqual(llm.telemetry["api_calls"], 1)
+                    self.assertEqual(llm.telemetry["total_tokens"], 10)
+                    self.assertEqual(llm.telemetry["usage_responses"], 1)
+
+    def test_malformed_response_envelopes_are_classified(self):
+        cases = [NS(), NS(choices=[]), NS(choices=None), NS(choices=[NS(finish_reason="stop")]),
+                 NS(choices=[NS(finish_reason="stop", message=None)])]
+        for field, value in (("finish_reason", None), ("finish_reason", "unknown"), ("message", NS(content=[]))):
+            r = response()
+            setattr(r.choices[0], field, value)
+            cases.append(r)
+        missing = response()
+        del missing.choices[0].finish_reason
+        cases.append(missing)
+        bad_call = response()
+        bad_call.choices[0].message.tool_calls = [NS(id="bad", function=None)]
+        cases.append(bad_call)
+        for native in (True, False):
+            for index, r in enumerate(cases):
+                with self.subTest(native=native, case=index):
+                    llm = self.make([r])
+                    llm.native_tools = native
+                    with self.assertRaises(LLMError) as caught:
+                        llm.chat([], [])
+                    self.assertEqual(caught.exception.category, "response")
+                    self.assertEqual(llm.client.chat.completions.create.call_count, 1)
+                    self.assertEqual(llm.native_tools, native)
 
     def test_unsupported_schema_or_parameter_never_falls_back(self):
         for message in (
