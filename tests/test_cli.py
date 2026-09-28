@@ -83,6 +83,21 @@ class ApprovalInputTests(unittest.TestCase):
 
 
 class CLIValidationTests(unittest.TestCase):
+    def test_output_file_cannot_also_be_other_reports_parent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            parent, child = root / "not-created", root / "not-created" / "report.md"
+            for json_path, markdown_path in ((parent, child), (child, parent)):
+                error = io.StringIO()
+                with self.subTest(json_path=json_path), patch("sys.argv", ["cli.py", "--json", str(json_path), "--markdown", str(markdown_path)]), \
+                        patch("cli.NvidiaLLM") as constructor, redirect_stderr(error):
+                    with self.assertRaises(SystemExit) as caught:
+                        main()
+                self.assertEqual(caught.exception.code, 2)
+                constructor.assert_not_called()
+                self.assertEqual(list(root.iterdir()), [])
+                self.assertIn("상위 폴더", error.getvalue())
+
     def test_conflicting_or_invalid_export_paths_fail_before_model_setup(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

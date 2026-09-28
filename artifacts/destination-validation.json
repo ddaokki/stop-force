@@ -1,0 +1,53 @@
+{
+  "verified_at_utc": "2026-09-28T14:13:29.246957+00:00",
+  "base_commit": "4b85449d5863410463e4d5348ffbeaadfb6e3f3c",
+  "checks": [
+    {
+      "command": "python -m unittest discover -s tests -v",
+      "exit_code": 0,
+      "summary": [
+        "Ran 90 tests in 5.415s",
+        "OK"
+      ]
+    },
+    {
+      "command": "python evaluate.py --output-dir .git/destination-evaluation",
+      "exit_code": 0,
+      "summary": [
+        "PASS: 9 scripted cases, 20 corpus cases; .git\\destination-evaluation\\summary.md"
+      ]
+    }
+  ],
+  "additional_live_api_calls": 0,
+  "scope": [
+    "mutually conflicting report file and parent-directory destinations rejected before model setup",
+    "both JSON-parent and Markdown-parent orders reject without creating files",
+    "existing atomic report, interruption and core provider/UI regressions"
+  ],
+  "unverified": [
+    "live NVIDIA behavior for this revision",
+    "Linux and macOS execution",
+    "competition form submission"
+  ],
+  "source_hash_algorithm": "SHA256 of source bytes normalized to LF",
+  "source_hashes": {
+    "app.py": "37654b22aebdcb4bb004eb0e270791da154ff4c99e06181cfc44f300a70669e6",
+    "cli.py": "246238b6cafff169d9d889d58f77ba01f821ebcce293b5b4955144100ca59a10",
+    "evaluate.py": "b67aa2adb3279783638490c12792523b289c0c6acbfb747a50e66d5704a8a4b1",
+    "policy.yaml": "5dc5d6b023eeb1e5b6e3526b951ba78c6d47b980cb1b6edf5f5caa943910fff7",
+    "stopforce/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stopforce/agent.py": "def8da28d23e99e48ea5b6879240753755dd2e1554e0a4070546dacdaeae59b7",
+    "stopforce/cluster.py": "5581032bf3e8cf92d4e3541ee46e4c72d79d2fb977d4e0c26c49d6f287bcf304",
+    "stopforce/commands.py": "080b7cbee1a9e96fca48e18325a03d51506198458c7c2d982007d1b795fc0cba",
+    "stopforce/llm.py": "ec632eafcb9bd4befedbfad39fd5ab6357cd662edf23118d2108c4f9da169057",
+    "stopforce/policy.py": "12ca1d70bd0e8369d9edc27b5342c844d8bd720611d1ef2031952d8ba04f01f7",
+    "stopforce/reporting.py": "789310c761a143bcbbcf1137b76d30cacd8ac2ce4ad8f60a935886dba431ebec",
+    "stopforce/skills.py": "4f8bb5c1bafa0454341c2b111579a666cac876346b2d5b7fdc3a3819d916307e",
+    "tests/test_agent.py": "d8f0092b0aa4eb721dddca954abf33c7aa0b433f4cb5a525224c3d811a058941",
+    "tests/test_cli.py": "5b7abd18a65fce34d3287667fa1cff61dd3d27661f644414c1569238db916eb5",
+    "tests/test_evaluate.py": "83b0ae409bcda1d63aa78ae93a27f2d8f235c896ff9f78362dc19241beee40f3",
+    "tests/test_llm.py": "54e5ee4d89ecc011f36b91c08af4b2264df4bbb91d8c09ce2c86fe6a960d9d6a",
+    "tests/test_policy_cluster.py": "90c7646836df9382f6743d66096ab6111c95aa55683fc4c2f1345cc6c56bf2b8",
+    "tests/test_ui.py": "adc76e3bb738bfa2da029248f9c8b57ae0b1203b17fefb5fcffc394d71ec6f06"
+  }
+}

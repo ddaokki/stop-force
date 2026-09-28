@@ -63,9 +63,12 @@ def main():
 
     outputs = [path for path in (args.json, args.markdown) if path is not None]
     try:
-        if len(outputs) == 2 and (outputs[0].resolve() == outputs[1].resolve() or
+        resolved = [path.resolve() for path in outputs]
+        if len(outputs) == 2 and (resolved[0] == resolved[1] or
                 (all(path.exists() for path in outputs) and outputs[0].samefile(outputs[1]))):
             ap.error("JSON과 Markdown은 서로 다른 파일에 저장해야 합니다.")
+        if len(resolved) == 2 and (resolved[0] in resolved[1].parents or resolved[1] in resolved[0].parents):
+            ap.error("한 보고서의 파일 경로를 다른 보고서의 상위 폴더로 사용할 수 없습니다.")
         for path in outputs:
             if path.exists() and not path.is_file():
                 ap.error("보고서 저장 경로는 디렉터리가 아닌 파일이어야 합니다.")

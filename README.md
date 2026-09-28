@@ -75,7 +75,7 @@ NVIDIA_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b
 
 `--auto-approve`는 시뮬레이션 검증을 위해 모든 승인 요청을 허용합니다. `--deny`는 승인 요청을 거부합니다. 정책 OFF에서도 지원하는 단일 명령 문법만 허용하며 복합 셸 명령을 실제로 실행하지 않습니다. 비밀값 가림은 정책 OFF와 관계없이 유지됩니다.
 
-JSON과 Markdown 저장 경로는 서로 다른 파일이어야 합니다. 같은 파일이나 디렉터리를 출력으로 지정하면 모델 실행 전에 오류로 종료합니다. 설정을 읽지 못하거나 보고서를 쓰지 못한 경우에도 실패를 안내하고 0이 아닌 종료 코드를 반환합니다. 설정 오류 메시지에 비밀값이 포함될 수 있어 예외 본문은 표시하지 않습니다.
+JSON과 Markdown 저장 경로는 서로 다른 파일이어야 합니다. 같은 파일이나 디렉터리를 출력으로 지정하거나, 한 보고서 파일을 다른 보고서의 상위 폴더로 지정하면 모델 실행 전에 오류로 종료합니다. 아직 생성되지 않은 경로 사이의 충돌도 검사합니다. 설정을 읽지 못하거나 보고서를 쓰지 못한 경우에도 실패를 안내하고 0이 아닌 종료 코드를 반환합니다. 설정 오류 메시지에 비밀값이 포함될 수 있어 예외 본문은 표시하지 않습니다.
 
 보고서는 파일마다 같은 폴더의 임시 파일에 먼저 작성하고, 쓰기에 성공한 뒤 기존 파일을 교체합니다. 쓰기 도중 실패하거나 교체 권한이 없으면 기존 보고서를 보존하고 임시 파일을 정리합니다. JSON과 Markdown 두 파일을 동시에 교체하는 트랜잭션은 아닙니다.
 
@@ -123,7 +123,7 @@ JSON 도구 인자의 반복 문자열과 문자 그대로의 `<think>`는 보�
 
 차단과 거부는 명령 시도 수, 무승인 실행은 성공한 실행 수를 분모로 계산합니다. 비밀값 누출 검사는 평가 코드에 열거한 합성 표식에 한정합니다. 고정 목록 통과를 모든 공격이나 모든 비밀값에 대한 보장으로 해석하지 않습니다. 테스트와 사전 작성 평가의 실제 NVIDIA API 호출 수는 0입니다.
 
-검증 환경: Windows, Python 3.12.9, OpenAI SDK 3.19.2, Streamlit 1.64.0. 최신 자동 테스트 89개(화면 9가지 조합, 만료/중단, JSON 해석, CLI 저장 실패, 호출 ID와 설정, 응답 종료 상태 검사 포함), 평가 9개 사례와 고정 명령 20개 조합이 통과했습니다. [최신 검증 범위와 소스 해시](artifacts/shutdown-validation.json)를 제공합니다. [수정 전후 9개 재현 결과](artifacts/baseline.json), [1차 검증](artifacts/validation.json), [2차 검증](artifacts/additional-validation.json), [3차 검증](artifacts/execution-validation.json), [4차 검증](artifacts/protocol-validation.json), [5차 검증](artifacts/input-validation.json), [6차 검증](artifacts/completion-validation.json)은 각 개선 당시의 기록입니다. 추가 개선은 오프라인과 API 대역으로 검증했으며 실제 NVIDIA API를 다시 호출하지 않았습니다. macOS와 Linux에서의 실행은 검증하지 않았습니다.
+검증 환경: Windows, Python 3.12.9, OpenAI SDK 3.19.2, Streamlit 1.64.0. 최신 자동 테스트 90개(화면 9가지 조합, 만료/중단, JSON 해석, CLI 저장 실패와 경로 충돌, 호출 ID와 설정, 응답 종료 상태 검사 포함), 평가 9개 사례와 고정 명령 20개 조합이 통과했습니다. [최신 검증 범위와 소스 해시](artifacts/destination-validation.json)를 제공합니다. [수정 전후 9개 재현 결과](artifacts/baseline.json), [1차 검증](artifacts/validation.json), [2차 검증](artifacts/additional-validation.json), [3차 검증](artifacts/execution-validation.json), [4차 검증](artifacts/protocol-validation.json), [5차 검증](artifacts/input-validation.json), [6차 검증](artifacts/completion-validation.json), [7차 검증](artifacts/shutdown-validation.json)은 각 개선 당시의 기록입니다. 추가 개선은 오프라인과 API 대역으로 검증했으며 실제 NVIDIA API를 다시 호출하지 않았습니다. macOS와 Linux에서의 실행은 검증하지 않았습니다.
 
 핵심 기능 회귀 검사에는 장애 진단, 즉시 완화 조치, 승인 전 실행 보류, 승인 시 복구와 거부 시 완화 유지, 최종 상태와 실행 기록의 일치가 포함됩니다. `NvidiaLLM`에 공급자 모의 응답을 넣어 네이티브/JSON 두 방식과 승인/거부 조합도 검사합니다. 이 검사는 연결 코드와 에이전트 사이의 전체 흐름을 확인하며, 실제 모델의 진단 능력이나 네트워크 연결 검사를 대신하지 않습니다.
 
