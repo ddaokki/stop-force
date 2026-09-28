@@ -20,7 +20,7 @@ st.markdown("""
 <style>
 .block-container {padding-top: 1.6rem; max-width: 1200px;}
 .ev {border-left: 4px solid #999; padding: 6px 12px; margin: 6px 0; border-radius: 6px; background: rgba(127,127,127,.06);}
-.ev pre {white-space: pre; overflow-x: auto; font-size: 12px; margin: 4px 0 0 0;} .ev .b {margin-top:3px; line-height:1.55;}
+.ev pre {white-space: pre; overflow-x: auto; font-size: 12px; margin: 4px 0 0 0;} .ev .b {margin-top:3px; line-height:1.55; overflow-wrap:anywhere;}
 .ev.thought {border-color:#76b900;} .ev.tool {border-color:#3b82f6;} .ev.result {border-color:#94a3b8;}
 .ev.policy {border-color:#f59e0b;} .ev.deny {border-color:#ef4444; background: rgba(239,68,68,.08);}
 .ev.approval {border-color:#8b5cf6;} .ev.error {border-color:#ef4444;}

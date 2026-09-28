@@ -19,6 +19,21 @@ DEFAULT_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
 BASE_URL = "https://integrate.api.nvidia.com/v1"
 
 
+REPEAT_RE = re.compile(r"(.{2,16}?)\1{4,}", re.S)
+
+
+def _clean(text: str | None) -> str:
+    """<think> 블록 제거 + 모델이 같은 토막을 반복하는 퇴화 출력(예: 'sellsellsell…') 정리."""
+    t = THINK_RE.sub("", text or "").strip()
+    if not t:
+        return ""
+    collapsed = REPEAT_RE.sub("", t)
+    # 절반 이상이 반복 토막이면 의미 없는 출력으로 보고 버린다
+    if len(collapsed.strip()) < len(t) * 0.5:
+        return ""
+    return collapsed.strip()
+
+
 def _new_id() -> str:
     return "call_" + uuid.uuid4().hex[:12]
 
@@ -50,6 +65,9 @@ class NvidiaLLM:
         self.client = OpenAI(base_url=os.getenv("NVIDIA_BASE_URL", BASE_URL),
                              api_key=api_key or os.environ["NVIDIA_API_KEY"])
         self.native_tools = os.getenv("NVIDIA_NATIVE_TOOLS", "1") != "0"
+        # Nemotron 권장 샘플링 (너무 낮은 temperature는 반복 퇴화를 일으킴)
+        self.temperature = float(os.getenv("NVIDIA_TEMPERATURE", "0.6"))
+        self.top_p = float(os.getenv("NVIDIA_TOP_P", "0.95"))
         self.label = f"{self.model} @ build.nvidia.com"
 
     def chat(self, messages: list[dict], tools: list[dict]) -> dict:
@@ -67,10 +85,10 @@ class NvidiaLLM:
     def _chat_native(self, messages, tools) -> dict:
         r = self.client.chat.completions.create(
             model=self.model, messages=messages, tools=tools, tool_choice="auto",
-            temperature=0.2, max_tokens=2048,
+            temperature=self.temperature, top_p=self.top_p, max_tokens=4096,
         )
         m = r.choices[0].message
-        content = THINK_RE.sub("", m.content or "").strip()
+        content = _clean(m.content)
         calls = []
         for tc in m.tool_calls or []:
             try:
@@ -107,8 +125,9 @@ class NvidiaLLM:
                 conv.append({"role": "assistant", "content": txt})
             else:
                 conv.append({"role": m["role"], "content": m.get("content") or ""})
-        r = self.client.chat.completions.create(model=self.model, messages=conv, temperature=0.2, max_tokens=2048)
-        content = THINK_RE.sub("", r.choices[0].message.content or "").strip()
+        r = self.client.chat.completions.create(model=self.model, messages=conv, temperature=self.temperature,
+                                                top_p=self.top_p, max_tokens=4096)
+        content = _clean(r.choices[0].message.content)
         call = _extract_json_call(content)
         visible = JSON_BLOCK_RE.sub("", content).strip()
         return {"content": visible, "tool_calls": [call] if call else [], "native": False}
