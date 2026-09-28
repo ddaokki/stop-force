@@ -1,0 +1,56 @@
+{
+  "verified_at_utc": "2026-09-28T13:23:20.138046+00:00",
+  "base_commit": "0fa29006daa4a235960d92198d005965ad8e0ff0",
+  "checks": [
+    {
+      "command": "python -m unittest discover -s tests -v",
+      "exit_code": 0,
+      "summary": [
+        "Ran 50 tests in 4.443s",
+        "OK"
+      ]
+    },
+    {
+      "command": "python evaluate.py --output-dir .git/additional-evaluation",
+      "exit_code": 0,
+      "summary": [
+        "PASS: 9 scripted cases, 20 corpus cases; .git\\additional-evaluation\\summary.md"
+      ]
+    }
+  ],
+  "additional_live_api_calls": 0,
+  "source_hash_algorithm": "SHA256 of source bytes normalized to LF",
+  "source_hashes": {
+    "app.py": "37654b22aebdcb4bb004eb0e270791da154ff4c99e06181cfc44f300a70669e6",
+    "cli.py": "4edb7be91241f0d7164c0e1c5d3eaef8f00f892ad6d8a4edc4475ba1e835a1f1",
+    "evaluate.py": "b67aa2adb3279783638490c12792523b289c0c6acbfb747a50e66d5704a8a4b1",
+    "policy.yaml": "5dc5d6b023eeb1e5b6e3526b951ba78c6d47b980cb1b6edf5f5caa943910fff7",
+    "stopforce/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stopforce/agent.py": "19178f76ef20c9e61d528ad19c453ee3a3c550cb8835cf95f3f719b1342cd0bb",
+    "stopforce/cluster.py": "5bfb4749074088b54ea916d7922d9574e5e940d2ac54086c8b262e1f03c49901",
+    "stopforce/commands.py": "080b7cbee1a9e96fca48e18325a03d51506198458c7c2d982007d1b795fc0cba",
+    "stopforce/llm.py": "d5d1624d1270952ebe2758c839a5d02bdae2646bc573305c6d10e3657908ddd3",
+    "stopforce/policy.py": "12ca1d70bd0e8369d9edc27b5342c844d8bd720611d1ef2031952d8ba04f01f7",
+    "stopforce/reporting.py": "7ecb78610882faef9d40c5f38f184397ed01e8885274c42c7853b617281a1f7c",
+    "stopforce/skills.py": "4f8bb5c1bafa0454341c2b111579a666cac876346b2d5b7fdc3a3819d916307e",
+    "tests/test_agent.py": "74d011fc6600cd76ecbc7865ea056cc808758c5167b986ca2df6f0cc282e1849",
+    "tests/test_cli.py": "ecb44658b5cc45424e8208ec604ece2cf6bddcbc5fb22910ee95ef103f8936a6",
+    "tests/test_evaluate.py": "83b0ae409bcda1d63aa78ae93a27f2d8f235c896ff9f78362dc19241beee40f3",
+    "tests/test_llm.py": "61835f24bf83a767c68f65ceee80193fe25c3abd71ccc7ef79f8a5c2d5039644",
+    "tests/test_policy_cluster.py": "28a3ce2eefea6314e537445ca1f6b63dd9ee4b1c76e9f58e4d2cb2c462e37e95",
+    "tests/test_ui.py": "adc76e3bb738bfa2da029248f9c8b57ae0b1203b17fefb5fcffc394d71ec6f06"
+  },
+  "browser_validation": {
+    "fresh_server_restart": true,
+    "approval_countdown_observed_seconds": [
+      298,
+      293
+    ],
+    "cancel_report_termination": "cancelled",
+    "cancel_report_recovery": "mitigated",
+    "api_calls": 0,
+    "screenshot": "screenshots/cancelled-report.png",
+    "full_300_second_browser_wait": false,
+    "deadline_expiration_covered_by_automated_tests": true
+  }
+}

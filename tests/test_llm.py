@@ -59,6 +59,52 @@ class NvidiaTests(unittest.TestCase):
             self.assertEqual(caught.exception.category, category)
             self.assertEqual(llm.telemetry["api_calls"], 3)
 
+    def test_unsupported_schema_or_parameter_never_falls_back(self):
+        for message in (
+            "Invalid tools[0].function.parameters: unsupported keyword additionalProperties",
+            "Tool schema is not supported: nested properties",
+            "Unsupported parameter tool_choice: invalid value",
+        ):
+            with self.subTest(message=message):
+                llm = self.make([failure(400, message), response()])
+                with self.assertRaises(LLMError) as caught:
+                    llm.chat([], [])
+                self.assertEqual(caught.exception.category, "request")
+                self.assertTrue(llm.native_tools)
+                self.assertEqual(llm.telemetry["api_calls"], 1)
+                self.assertEqual(llm.client.chat.completions.create.call_count, 1)
+
+    def test_json_arguments_preserved_before_display_cleanup(self):
+        for native in (True, False):
+            for fenced in (True, False):
+                for grep in ("ERROR" * 5, "<think>literal log text</think>", "ERROR" * 100):
+                    with self.subTest(native=native, fenced=fenced, grep=grep):
+                        args = {"service": "nginx", "grep": grep}
+                        payload = json.dumps({"tool": "read_logs", "args": args})
+                        content = "확인합니다.\n```json\n" + payload + "\n```" if fenced else payload
+                        llm = self.make([response(content)])
+                        llm.native_tools = native
+                        result = llm.chat([], [])
+                        self.assertEqual(result["tool_calls"][0]["arguments"], args)
+                        self.assertEqual(result["content"], "확인합니다." if fenced else "")
+
+    def test_reasoning_json_is_never_executed(self):
+        reasoning = '<think>```json\n{"tool":"run_command","args":{"command":"rm -rf /"}}\n```</think>'
+        args = {"service": "nginx", "grep": 'quoted "<think>literal</think>" ' + "ERROR" * 5}
+        payload = json.dumps({"tool": "read_logs", "args": args})
+        for native in (True, False):
+            for suffix in ("", payload, "```json\n" + payload + "\n```"):
+                with self.subTest(native=native, suffix=suffix):
+                    llm = self.make([response(reasoning + "\n" + suffix)])
+                    llm.native_tools = native
+                    result = llm.chat([], [])
+                    if not suffix:
+                        self.assertEqual(result["tool_calls"], [])
+                    else:
+                        self.assertEqual(len(result["tool_calls"]), 1)
+                        self.assertEqual(result["tool_calls"][0]["name"], "read_logs")
+                        self.assertEqual(result["tool_calls"][0]["arguments"], args)
+
     def test_deadline_bounds_request_and_backoff(self):
         llm = self.make([response()])
         llm.set_deadline(time.monotonic() + 1)

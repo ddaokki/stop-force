@@ -1,6 +1,7 @@
 """Stop-Force 웹 데모 — 실행: streamlit run app.py"""
 import os
 import time
+from math import ceil
 from html import escape
 from pathlib import Path
 
@@ -133,6 +134,37 @@ def render(ev, box):
         st.html(html)
 
 
+@st.fragment(run_every=1)
+def approval_panel(agent):
+    if not agent.pending:
+        return
+    if agent.check_deadline():
+        st.session_state.pop("resolve", None)
+        st.session_state["running"] = False
+        st.rerun()
+    p = agent.pending
+    with st.container(border=True):
+        st.markdown("### ⏸ 온콜 엔지니어 승인 필요")
+        st.code(p["command"], language="bash")
+        st.caption(f"요청 ID: {p['id']} | 대상: {p['target']} | 상태: 승인 대기")
+        st.markdown(f"- **에이전트가 말한 이유:** {p['reason']}\n- **승인이 필요한 이유(정책):** {p['policy_reason']}")
+        st.info(f"예상 영향: {p['impact']}")
+        st.caption(f"남은 승인 가능 시간: {ceil(agent.remaining_seconds)}초. "
+                   f"전체 실행 제한 {agent.max_seconds}초에 승인 대기가 포함됩니다. 실제 서버에는 적용되지 않습니다.")
+        b1, b2 = st.columns(2)
+        if b1.button("✅ 승인하고 실행", type="primary", width="stretch"):
+            st.session_state.update(resolve={"approved": True, "id": p["id"]}, running=True)
+            st.rerun()
+        if b2.button("⛔ 거부", width="stretch"):
+            st.session_state.update(resolve={"approved": False, "id": p["id"]}, running=True)
+            st.rerun()
+        if st.button("🛑 실행 중단", width="stretch"):
+            agent.cancel("사용자가 승인 대기 중 실행을 중단함")
+            st.session_state.pop("resolve", None)
+            st.session_state["running"] = False
+            st.rerun()
+
+
 st.markdown(f"**장애 신고:** {ag.incident}")
 st.caption(f"두뇌: {ag.llm.label} | 명령 정책: {'ON' if ag.policy.enabled else '⚠️ OFF'} | 비밀 패턴 가림: ON")
 if not ag.policy.enabled:
@@ -178,21 +210,7 @@ with left:
         st.rerun()
 
     if ag.pending:
-        p = ag.pending
-        with st.container(border=True):
-            st.markdown("### ⏸ 온콜 엔지니어 승인 필요")
-            st.code(p["command"], language="bash")
-            st.caption(f"요청 ID: {p['id']} | 대상: {p['target']} | 상태: 승인 대기")
-            st.markdown(f"- **에이전트가 말한 이유:** {p['reason']}\n- **승인이 필요한 이유(정책):** {p['policy_reason']}")
-            st.info(f"예상 영향: {p['impact']}")
-            st.caption("실제 서버에는 적용되지 않습니다. 전체 실행 제한은 승인 대기를 포함해 300초입니다.")
-            b1, b2 = st.columns(2)
-            if b1.button("✅ 승인하고 실행", type="primary", width="stretch"):
-                st.session_state.update(resolve={"approved": True, "id": p["id"]}, running=True)
-                st.rerun()
-            if b2.button("⛔ 거부", width="stretch"):
-                st.session_state.update(resolve={"approved": False, "id": p["id"]}, running=True)
-                st.rerun()
+        approval_panel(ag)
 
     if ag.report:
         r = ag.report

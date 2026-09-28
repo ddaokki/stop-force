@@ -127,6 +127,57 @@ class HealthTests(unittest.TestCase):
             self.assertEqual(cluster.health()['remaining_causes'], [])
 
 
+class CurrentObservationTests(unittest.TestCase):
+    QUERY = 'psql -c "SELECT state, count(*) FROM pg_stat_activity GROUP BY state"'
+    KILL_IDLE = "psql -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state='idle in transaction'\""
+
+    def test_disk_observations_and_repeat_cleanup_follow_current_state(self):
+        cluster = make_cluster('disk_full')
+        history = list(cluster.logs['filesystem'])
+        self.assertIn('/var/log/app: 41G', cluster.execute('du -sh /var/log/*'))
+        self.assertIn('38G', cluster.execute('logrotate -f /etc/logrotate.conf'))
+        for command in ('du -sh /var/log/*', 'df -h'):
+            output = cluster.execute(command)
+            self.assertIn('/var/log: 34% used', output)
+            self.assertIn('/var/log/app: 3G', output)
+            self.assertIn('초과분 0G', output)
+            self.assertNotIn('38G', output)
+        before = cluster.health()
+        self.assertEqual(cluster.execute("find /var/log/app -name '*.log.gz' -mtime +7 -delete"), '0 files removed')
+        self.assertEqual(cluster.health(), before)
+        self.assertEqual(cluster.logs['filesystem'], history)
+
+    def test_db_restart_and_rollbacks_keep_activity_and_warnings_current(self):
+        cluster = make_cluster('db_leak')
+        history = list(cluster.logs['postgres'])
+        self.assertIn('idle in transaction | 85', cluster.execute(self.QUERY))
+        self.assertIn('v1.8.2', cluster.execute('kubectl rollout restart deployment/payment-worker'))
+        self.assertIn('idle in transaction | 0', cluster.execute(self.QUERY))
+        self.assertEqual(cluster.health()['recovery_status'], 'mitigated')
+        cluster.execute('kubectl rollout undo deployment/payment-worker')
+        output = cluster.execute(self.QUERY)
+        self.assertIn('idle in transaction | 0', output)
+        self.assertIn('active | 22', output)
+        self.assertNotIn('application_name of idle', output)
+        self.assertNotIn('v1.8.2', cluster.execute('kubectl rollout restart deployment/payment-worker'))
+        self.assertNotIn('포화', cluster.execute('kubectl rollout restart deployment/payment-api'))
+        self.assertTrue(cluster.health()['healthy'])
+        self.assertIn('(0 rows)', cluster.execute(self.KILL_IDLE))
+        cluster.execute('kubectl rollout undo deployment/payment-worker')
+        self.assertIn('idle in transaction | 85', cluster.execute(self.QUERY))
+        self.assertIn('v1.8.2', cluster.execute('kubectl rollout restart deployment/payment-worker'))
+        self.assertEqual(cluster.logs['postgres'], history)
+
+    def test_killing_idle_sessions_does_not_invent_more_sessions(self):
+        cluster = make_cluster('db_leak')
+        self.assertIn('(85 rows)', cluster.execute(self.KILL_IDLE))
+        output = cluster.execute(self.QUERY)
+        self.assertIn('idle in transaction | 0', output)
+        self.assertIn('active | 15', output)
+        self.assertIn('(0 rows)', cluster.execute(self.KILL_IDLE))
+        self.assertEqual(cluster.db_connections, 15)
+
+
 class RedactionTests(unittest.TestCase):
     def test_redaction_always_on_and_idempotent(self):
         text = '''{"password": "two words", "db_password": "other secret"}

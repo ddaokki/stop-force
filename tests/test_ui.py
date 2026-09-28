@@ -43,6 +43,32 @@ class UITests(unittest.TestCase):
             self.assertFalse(app.exception)
             self.assertTrue(any("API 키가 없어" in e.value for e in app.error))
 
+    def test_approval_deadline_and_cancel_show_exportable_report(self):
+        with patch.dict(os.environ, {"STOPFORCE_DEMO_DELAY": "0", "NVIDIA_API_KEY": ""}):
+            for outcome in ("timeout", "cancelled"):
+                with self.subTest(outcome=outcome):
+                    app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=15).run()
+                    app.button[0].click().run()
+                    agent = app.session_state["agent"]
+                    self.assertIsNotNone(agent.pending)
+                    self.assertTrue(any("남은 승인 가능 시간" in c.value for c in app.caption))
+                    executed = list(agent.cluster.executed)
+                    chats = agent.stats["chat_calls"]
+                    if outcome == "timeout":
+                        agent._deadline = 0
+                        app.run()
+                    else:
+                        next(b for b in app.button if b.label == "🛑 실행 중단").click().run()
+                    self.assertFalse(app.exception)
+                    agent = app.session_state["agent"]
+                    self.assertIsNone(agent.pending)
+                    self.assertEqual(agent.report["termination"], outcome)
+                    self.assertEqual(agent.report["recovery_status"], "mitigated")
+                    self.assertEqual(agent.cluster.executed, executed)
+                    self.assertEqual(agent.stats["chat_calls"], chats)
+                    self.assertEqual(len(app.get("download_button")), 2)
+                    self.assertFalse(any(b.label == "✅ 승인하고 실행" for b in app.button))
+
 
 if __name__ == "__main__":
     unittest.main()

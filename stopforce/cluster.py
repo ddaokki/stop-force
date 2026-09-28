@@ -35,6 +35,8 @@ class Cluster:
     executed: list[str] = field(default_factory=list)  # successful commands only
     attempted: list[str] = field(default_factory=list)  # every execute call
     rotation_restored: bool = False
+    expired_logs_cleaned: bool = False
+    db_idle_connections: int = 0  # current idle-in-transaction sessions, not historical logs
 
     # ------------------------------------------------------------------ 조회
     def list_services(self) -> str:
@@ -135,12 +137,15 @@ class Cluster:
         elif op == "kill_idle":
             result = self._kill_idle()
         elif op == "db_activity":
-            idle = int(self.db_connections * 0.85) if self.scenario == "db_leak" else 0
-            result = f"state | count\nidle in transaction | {idle}\nactive | {self.db_connections - idle}\n(application_name of idle: payment-worker)"
+            idle = self.db_idle_connections
+            result = f"state | count\nidle in transaction | {idle}\nactive | {self.db_connections - idle}"
+            if idle:
+                result += "\n(application_name of idle: payment-worker)"
         elif op == "disk":
             result = "\n".join(f"{m}: {p}% used" for m, p in self.disk_usage.items())
             if self.scenario == "disk_full":
-                result += "\n/var/log/app: 41G (app-*.log.gz 7일 초과분 38G)"
+                total, expired = (3, 0) if self.expired_logs_cleaned else (41, 38)
+                result += f"\n/var/log/app: {total}G (app-*.log.gz 7일 초과분 {expired}G)"
         elif op == "clean_logs":
             result = self._clean_logs()
         elif op == "restore_rotation":
@@ -169,14 +174,18 @@ class Cluster:
             return f"Error from server (NotFound): deployments.apps \"{name}\" not found"
         if self.scenario == "db_leak" and name == "payment-worker":
             self.db_connections = 24
+            self.db_idle_connections = 0
             api = self.services["payment-api"]
             api.latency_ms, api.error_rate = 280, 0.004
             api.status = s.status = "Running"
             s.error_rate = 0.0
             self.logs[name].append("2026-09-28T15:12:03Z INFO  worker restarted, pool size=20")
-            return (f"deployment.apps/{name} restarted\n"
-                    "※ 주의: 연결 누수 코드(v1.8.2)는 그대로라 수 시간 뒤 재발할 수 있음")
-        if self.scenario == "db_leak" and name == "payment-api":
+            result = f"deployment.apps/{name} restarted"
+            if s.version == "v1.8.2":
+                result += "\n※ 주의: 연결 누수 코드(v1.8.2)는 그대로라 수 시간 뒤 재발할 수 있음"
+            return result
+        if (self.scenario == "db_leak" and name == "payment-api"
+                and self.db_connections >= self.db_max_connections):
             return f"deployment.apps/{name} restarted (증상 변화 없음: DB 커넥션 여전히 포화)"
         return f"deployment.apps/{name} restarted"
 
@@ -194,6 +203,7 @@ class Cluster:
         if self.scenario == "db_leak" and name == "payment-worker":
             faulty = s.version == "v1.8.2"
             self.db_connections = 100 if faulty else 22
+            self.db_idle_connections = 85 if faulty else 0
             api = self.services["payment-api"]
             api.latency_ms, api.error_rate = (10240, 0.23) if faulty else (260, 0.003)
             api.status = s.status = "Running"
@@ -208,17 +218,19 @@ class Cluster:
         return f"deployment.apps/{name} scaled to {n}"
 
     def _kill_idle(self) -> str:
-        if self.scenario != "db_leak":
+        if not self.db_idle_connections:
             return " pg_terminate_backend \n(0 rows)"
-        killed = int(self.db_connections * 0.85)
+        killed = self.db_idle_connections
+        self.db_idle_connections = 0
         self.db_connections -= killed
         api = self.services["payment-api"]
         api.latency_ms, api.error_rate = 450, 0.01
         return f" pg_terminate_backend \n t\n({killed} rows)\n※ 일시 완화. 누수 원인(worker) 해결 전까지 재발"
 
     def _clean_logs(self) -> str:
-        if self.scenario != "disk_full":
+        if self.scenario != "disk_full" or self.expired_logs_cleaned:
             return "0 files removed"
+        self.expired_logs_cleaned = True
         self.disk_usage["/var/log"] = 34
         ng = self.services["nginx"]
         ng.error_rate, ng.latency_ms, ng.status = 0.002, 45, "Running"
@@ -267,6 +279,7 @@ def make_cluster(scenario: str) -> Cluster:
 
     if scenario == "db_leak":
         cl.db_connections = 100
+        cl.db_idle_connections = 85
         api = cl.services["payment-api"]
         api.latency_ms, api.error_rate = 10240, 0.23
         cl.logs["payment-api"] += [

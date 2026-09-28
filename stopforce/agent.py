@@ -148,7 +148,14 @@ class Agent:
             self._on_event(ev)
         return ev.id
 
-    def _expired(self):
+    @property
+    def remaining_seconds(self):
+        return 0.0 if self.done else max(0.0, self._deadline - time.monotonic())
+
+    def check_deadline(self):
+        """Expire an idle approval without advancing the model or executing work."""
+        if self.done:
+            return False
         if time.monotonic() >= self._deadline:
             self._finish("timeout", reason=f"전체 실행 한도 {self.max_seconds}초 초과 (승인 대기 포함)")
             return True
@@ -156,8 +163,10 @@ class Agent:
 
     def run(self, on_event=None) -> None:
         self._on_event = on_event
+        if self.pending:
+            self.check_deadline()
         while not self.done and self.pending is None:
-            if self._expired():
+            if self.check_deadline():
                 break
             if self.queue:
                 self._handle_call(self.queue.pop(0))
@@ -174,7 +183,7 @@ class Agent:
             return False
         if type(approved) is not bool:
             return False
-        if self._expired():
+        if self.check_deadline():
             return False
         self.pending = None
         record = self.approvals[p["id"]]
@@ -225,7 +234,7 @@ class Agent:
             category = getattr(exc, "category", "llm_error")
             self._finish(category, reason=f"{type(exc).__name__}: {exc}")
             return
-        if self._expired():
+        if self.check_deadline():
             return
         if content:
             self._emit("thought", "모델 판단 (실행 사실은 하네스에서 검증)", content)
@@ -384,7 +393,7 @@ class Agent:
             self._execute(call, action, key)
 
     def _execute(self, call, action, key, approved=False):
-        if self._expired():
+        if self.check_deadline():
             return
         try:
             out = self.cluster.execute(action["command"])

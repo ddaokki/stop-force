@@ -169,6 +169,38 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(agent.report["termination"], "cancelled")
         self.assertFalse(agent.resolve(True))
 
+    def test_idle_approval_expiration_does_not_call_model_or_execute(self):
+        for expire in (lambda a: a.run(), lambda a: a.check_deadline()):
+            with self.subTest(expire=expire):
+                agent = make_agent()
+                agent.run()
+                request_id = agent.pending["id"]
+                executed = list(agent.cluster.executed)
+                chats = agent.stats["chat_calls"]
+                with patch("stopforce.agent.time.monotonic", return_value=agent._deadline + 1):
+                    expire(agent)
+                self.assertIsNone(agent.pending)
+                self.assertEqual(agent.report["termination"], "timeout")
+                self.assertEqual(agent.report["approvals"][0]["status"], "expired")
+                self.assertEqual(agent.report["actions"][-1]["status"], "not_executed")
+                self.assertEqual(agent.stats["chat_calls"], chats)
+                self.assertEqual(agent.cluster.executed, executed)
+                self.assertFalse(agent.resolve(True, request_id=request_id))
+                count = len(agent.events)
+                self.assertFalse(agent.check_deadline())
+                self.assertEqual(len(agent.events), count)
+                self.assertEqual(agent.remaining_seconds, 0)
+
+    def test_checking_pending_deadline_preserves_unexpired_request(self):
+        agent = make_agent()
+        agent.run()
+        request_id = agent.pending["id"]
+        with patch("stopforce.agent.time.monotonic", return_value=agent._deadline - 12):
+            self.assertFalse(agent.check_deadline())
+            self.assertEqual(agent.remaining_seconds, 12)
+        self.assertEqual(agent.pending["id"], request_id)
+        self.assertIsNone(agent.report)
+
 
 if __name__ == "__main__":
     unittest.main()

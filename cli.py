@@ -2,6 +2,7 @@
 import argparse
 import os
 import sys
+import threading
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -15,6 +16,34 @@ from stopforce.reporting import report_json, report_markdown
 
 ROOT = Path(__file__).parent
 load_dotenv(ROOT / ".env")
+
+
+def read_approval(agent):
+    """Wait for terminal input only until the run deadline; late input is ignored."""
+    if agent.check_deadline():
+        return None
+    prompt = f"\n>>> 승인하시겠습니까? {agent.pending['command']} [y/N] "
+    result = []
+    ready = threading.Event()
+
+    def read():
+        try:
+            result.append((True, input(prompt)))
+        except Exception as exc:
+            result.append((False, exc))
+        finally:
+            ready.set()
+
+    threading.Thread(target=read, daemon=True).start()
+    if not ready.wait(agent.remaining_seconds):
+        agent.check_deadline()
+        return None
+    if agent.check_deadline():
+        return None
+    ok, value = result[0]
+    if not ok:
+        raise value
+    return value.strip().lower() == "y"
 
 
 def main():
@@ -58,7 +87,9 @@ def main():
             elif args.auto_approve:
                 ok = True
             else:
-                ok = input(f"\n>>> 승인하시겠습니까? {agent.pending['command']} [y/N] ").strip().lower() == "y"
+                ok = read_approval(agent)
+                if ok is None:
+                    break
             agent.resolve(ok, show, request_id=agent.pending["id"])
     except (KeyboardInterrupt, EOFError):
         agent.cancel("터미널 실행 또는 승인 입력 중단")

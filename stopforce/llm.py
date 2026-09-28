@@ -42,6 +42,38 @@ def _new_id() -> str:
     return "call_" + uuid.uuid4().hex[:12]
 
 
+def _without_thinking(text: str) -> str:
+    """Remove reasoning blocks outside JSON strings without changing argument data."""
+    output = []
+    depth = 0
+    quoted = escaped = False
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if not quoted and text.startswith("<think>", index):
+            end = text.find("</think>", index + len("<think>"))
+            if end < 0:
+                break
+            index = end + len("</think>")
+            continue
+        output.append(char)
+        if quoted:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                quoted = False
+        elif char == '"' and depth:
+            quoted = True
+        elif char in "{[":
+            depth += 1
+        elif char in "}]":
+            depth = max(0, depth - 1)
+        index += 1
+    return "".join(output)
+
+
 class LLMError(RuntimeError):
     """분류된 오류. 공급자 응답 본문이나 인증정보를 포함하지 않는다."""
     def __init__(self, category, status_code=None):
@@ -62,9 +94,12 @@ def _classify(exc):
         category = "server"
     elif isinstance(exc, TimeoutError) or "timeout" in type(exc).__name__.lower():
         category = "timeout"
+    elif status in (400, 404, 422) and re.search(r"\b(?:schema|parameters?|keyword|properties)\b", text):
+        category = "model" if status == 404 else "request"
     elif status in (400, 404, 422) and re.search(
-        r"(?:tools?|tool[_ ]calling|tool[_ ]choice|function calling).*?(?:not supported|unsupported|not support)|"
-        r"(?:not supported|unsupported|not support).*?(?:tools?|function calling)", text):
+        r"\b(?:tools?|tool[_ ]calling|tool[_ ]choice|function calling)\b\s+(?:(?:is|are)\s+)?(?:not supported|unsupported)\b|"
+        r"\b(?:does not support|doesn't support|cannot support|unsupported)\s+(?:tools?|tool[_ ]calling|tool[_ ]choice|function calling)\b",
+        text):
         category = "tool_unsupported"
     elif status == 404 or (status in (400, 422) and "model" in text and
                           any(x in text for x in ("not found", "invalid", "unknown", "does not exist"))):
@@ -238,7 +273,8 @@ class NvidiaLLM:
             extra_body={"chat_template_kwargs": {"enable_thinking": self.enable_thinking}},
         )
         m = r.choices[0].message
-        content = _clean(m.content)
+        raw_content = _without_thinking(m.content or "")
+        content = _clean(raw_content)
         calls = []
         for tc in m.tool_calls or []:
             try:
@@ -250,10 +286,11 @@ class NvidiaLLM:
             if parse_error:
                 call["parse_error"] = parse_error
             calls.append(call)
-        if not calls and content:
-            c = _extract_json_call(content)
+        if not calls and raw_content:
+            c = _extract_json_call(raw_content)
             if c:
                 calls = [c]
+                content = "" if raw_content.lstrip().startswith("{") else _clean(JSON_BLOCK_RE.sub("", raw_content))
         return {"content": content, "tool_calls": calls, "native": True}
 
     def _chat_json(self, messages, tools) -> dict:
@@ -283,9 +320,11 @@ class NvidiaLLM:
         r = self._request("json", model=self.model, messages=conv, temperature=self.temperature,
                                                 top_p=self.top_p, max_tokens=self.max_tokens,
                                                 extra_body={"chat_template_kwargs": {"enable_thinking": self.enable_thinking}})
-        content = _clean(r.choices[0].message.content)
-        call = _extract_json_call(content)
-        visible = JSON_BLOCK_RE.sub("", content).strip()
+        raw_content = _without_thinking(r.choices[0].message.content or "")
+        # Parse data before presentation cleanup: repeated text and literal think
+        # tags inside JSON strings are tool arguments, not disposable prose.
+        call = _extract_json_call(raw_content)
+        visible = "" if call and raw_content.lstrip().startswith("{") else _clean(JSON_BLOCK_RE.sub("", raw_content))
         return {"content": visible, "tool_calls": [call] if call else [], "native": False}
 
 
