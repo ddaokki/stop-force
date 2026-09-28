@@ -10,6 +10,71 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class UITests(unittest.TestCase):
+    def test_policy_setup_failure_does_not_crash_or_expose_details(self):
+        with patch.dict(os.environ, {"STOPFORCE_DEMO_DELAY": "0", "NVIDIA_API_KEY": ""}), \
+                patch("stopforce.policy.Policy", side_effect=ValueError("private-policy-fixture")) as policy:
+            app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=10).run()
+            app.button[0].click().run()
+        self.assertFalse(app.exception)
+        policy.assert_called_once()
+        self.assertTrue(any("실행 설정" in e.value for e in app.error))
+        self.assertFalse(any("private-policy-fixture" in e.value for e in app.error))
+        self.assertNotIn("agent", app.session_state)
+
+    def test_unreadable_policy_preview_does_not_crash_page(self):
+        original_read = Path.read_text
+
+        for error in (FileNotFoundError("private-path-fixture"), UnicodeDecodeError("utf-8", b"\xff", 0, 1, "private-path-fixture")):
+            def read(path, *args, **kwargs):
+                if path.name == "policy.yaml":
+                    raise error
+                return original_read(path, *args, **kwargs)
+
+            with self.subTest(error=type(error).__name__), patch.dict(os.environ, {"STOPFORCE_DEMO_DELAY": "0", "NVIDIA_API_KEY": ""}), \
+                    patch("pathlib.Path.read_text", read):
+                app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=10).run()
+                self.assertFalse(app.exception)
+                self.assertTrue(any("정책 파일" in e.value for e in app.warning))
+                app.button[0].click().run()
+            self.assertFalse(app.exception)
+            self.assertNotIn("agent", app.session_state)
+            self.assertFalse(any("private-path-fixture" in e.value for e in app.error))
+
+    def test_failed_restart_preserves_pending_run_without_exception_details(self):
+        with patch.dict(os.environ, {"STOPFORCE_DEMO_DELAY": "0", "NVIDIA_API_KEY": "fixture-key"}), \
+                patch("stopforce.llm.NvidiaLLM", side_effect=ValueError("private-provider-fixture")) as model:
+            app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=15).run()
+            app.radio[0].set_value("데모 모드 (사전 작성 시나리오)").run()
+            app.button[0].click().run()
+            previous = app.session_state["agent"]
+            request_id = previous.pending["id"]
+            app.radio[0].set_value("NVIDIA Nemotron (실제 LLM)").run()
+            next(b for b in app.button if b.label == "🚨 에이전트 출동").click().run()
+            self.assertFalse(app.exception)
+            self.assertIs(app.session_state["agent"], previous)
+            self.assertEqual(previous.pending["id"], request_id)
+            self.assertFalse(previous.done)
+            self.assertTrue(any("실행 설정" in e.value for e in app.error))
+            self.assertFalse(any("private-provider-fixture" in e.value for e in app.error))
+            next(b for b in app.button if b.label == "⛔ 거부").click().run()
+            self.assertFalse(app.exception)
+            self.assertEqual(previous.report["termination"], "finish")
+            self.assertEqual(previous.report["recovery_status"], "mitigated")
+            self.assertEqual(len(app.get("download_button")), 2)
+        model.assert_called_once()
+
+    def test_invalid_demo_delay_rejected_before_agent_creation(self):
+        for value in ("NaN", "Infinity", "-0.1", "1.1", "private-delay-fixture"):
+            with self.subTest(value=value), patch.dict(os.environ, {"STOPFORCE_DEMO_DELAY": value, "NVIDIA_API_KEY": ""}), \
+                    patch("stopforce.agent.Agent") as constructor:
+                app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=10).run()
+                app.button[0].click().run()
+                self.assertFalse(app.exception)
+                constructor.assert_not_called()
+                self.assertNotIn("agent", app.session_state)
+                self.assertTrue(any("실행 설정" in e.value for e in app.error))
+                self.assertFalse(any("private-delay-fixture" in e.value for e in app.error))
+
     def test_scenario_approval_matrix(self):
         with patch.dict(os.environ, {"STOPFORCE_DEMO_DELAY": "0", "NVIDIA_API_KEY": ""}):
             for scenario in ("db_leak", "bad_deploy", "disk_full"):

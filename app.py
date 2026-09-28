@@ -1,7 +1,7 @@
 """Stop-Force 웹 데모 — 실행: streamlit run app.py"""
 import os
 import time
-from math import ceil
+from math import ceil, isfinite
 from html import escape
 from pathlib import Path
 
@@ -51,10 +51,17 @@ with st.sidebar:
     incident = st.text_area("장애 신고 내용", SCENARIOS[scenario]["incident"], height=120)
     start = st.button("🚨 에이전트 출동", type="primary", width="stretch")
     with st.expander("policy.yaml 보기"):
-        st.code((ROOT / "policy.yaml").read_text(encoding="utf-8"), language="yaml")
+        try:
+            st.code((ROOT / "policy.yaml").read_text(encoding="utf-8"), language="yaml")
+        except (OSError, UnicodeError):
+            st.warning("정책 파일을 읽을 수 없습니다. 파일 경로와 접근 권한을 확인하세요.")
 
 
 def new_agent():
+    demo = not mode.startswith("NVIDIA")
+    demo_delay = float(os.getenv("STOPFORCE_DEMO_DELAY", "0.08")) if demo else 0
+    if not isfinite(demo_delay) or not 0 <= demo_delay <= 1:
+        raise ValueError("STOPFORCE_DEMO_DELAY must be between 0 and 1 second")
     cl = make_cluster(scenario)
     if mode.startswith("NVIDIA"):
         llm = NvidiaLLM(model=model)
@@ -65,7 +72,7 @@ def new_agent():
     if previous and not previous.done:
         previous.cancel("새 시나리오 실행으로 중단")
     st.session_state.pop("resolve", None)
-    st.session_state.update(agent=ag, before=ag.before, running=True, demo=not mode.startswith("NVIDIA"))
+    st.session_state.update(agent=ag, before=ag.before, running=True, demo=demo, demo_delay=demo_delay)
 
 
 if start:
@@ -74,9 +81,10 @@ if start:
     else:
         try:
             new_agent()
-        except Exception as exc:
-            safe, _ = Policy(ROOT / "policy.yaml").redact(str(exc))
-            st.sidebar.error(f"실행 설정 오류: {safe}")
+        except Exception:
+            # Startup can fail while loading the masking policy itself. Do not
+            # retry that dependency or expose arbitrary configuration values.
+            st.sidebar.error("실행 설정을 읽을 수 없습니다. .env, policy.yaml, skills 설정을 확인하세요.")
 
 # ---------------------------------------------------------------------- 헤더
 st.title("🛡 Stop-Force")
@@ -198,7 +206,7 @@ with left:
         def live(ev):
             render(ev, box)
             if demo:
-                time.sleep(float(os.getenv("STOPFORCE_DEMO_DELAY", "0.08")))
+                time.sleep(st.session_state.get("demo_delay", 0.08))
 
         with st.spinner("에이전트가 작업 중…"):
             action = st.session_state.pop("resolve", None)

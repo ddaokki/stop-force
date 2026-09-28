@@ -124,18 +124,22 @@ class Agent:
 
     def _safe(self, value):
         if isinstance(value, str):
-            text, count = self.policy.redact(value)
+            # JSON can contain escaped lone surrogates. Merge valid pairs and
+            # replace only invalid UTF-16 units before any UI/UTF-8 boundary.
+            text = value.encode("utf-16-le", errors="surrogatepass").decode("utf-16-le", errors="replace")
+            text, count = self.policy.redact(text)
             self.stats["redacted"] += count
             return text
         if isinstance(value, dict):
             # Redact structured secret fields as well as patterns inside strings.
             result = {}
             for key, item in value.items():
+                safe_key = self._safe(key) if isinstance(key, str) else key
                 if str(key).lower() in {"password", "passwd", "pwd", "db_password", "api_key", "nvidia_api_key", "access_token", "secret"}:
-                    result[key] = "[REDACTED:field]"
+                    result[safe_key] = "[REDACTED:field]"
                     self.stats["redacted"] += 1
                 else:
-                    result[key] = self._safe(item)
+                    result[safe_key] = self._safe(item)
             return result
         if isinstance(value, (list, tuple)):
             return [self._safe(item) for item in value]
