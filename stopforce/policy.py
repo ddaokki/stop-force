@@ -4,11 +4,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlparse
 
 import yaml
 
-URL_RE = re.compile(r"https?://[^\s'\"|]+")
+from .commands import parse_command
 
 
 @dataclass
@@ -23,40 +22,43 @@ class Policy:
         self.path = Path(path)
         self.cfg = yaml.safe_load(self.path.read_text(encoding="utf-8"))
         self.enabled = enabled
-        cmds = self.cfg.get("commands", {})
-        self.rules = {
-            k: [(re.compile(r["pattern"], re.I), r.get("reason", ""), r["pattern"]) for r in cmds.get(k, [])]
-            for k in ("deny", "approval", "allow")
-        }
-        self.allow_hosts = set(self.cfg.get("network", {}).get("allow_hosts", []))
+        self.operations = self.cfg.get("operations", {})
         self.redactions = [(re.compile(r["pattern"]), r["name"]) for r in self.cfg.get("redact", [])]
 
     def check(self, command: str) -> Decision:
+        try:
+            parsed = parse_command(command)
+        except ValueError as exc:
+            return Decision("deny", str(exc), "command.grammar")
         if not self.enabled:
-            return Decision("allow", "정책 OFF (비교용)")
-        cmd = command.strip()
-
-        for url in URL_RE.findall(cmd):
-            host = urlparse(url).hostname or ""
-            if host not in self.allow_hosts:
-                return Decision("deny", f"허용되지 않은 네트워크 목적지: {host}", "network.allow_hosts")
-
-        for rx, reason, pat in self.rules["deny"]:
-            if rx.search(cmd):
-                return Decision("deny", reason, pat)
-        for rx, reason, pat in self.rules["approval"]:
-            if rx.search(cmd):
-                return Decision("approval", reason, pat)
-        for rx, _reason, pat in self.rules["allow"]:
-            if rx.search(cmd):
-                return Decision("allow", "허용 목록", pat)
+            return Decision("allow", "정책 OFF (알려진 시뮬레이션 명령만)", "simulation")
+        if parsed.operation == "destroy":
+            return Decision("deny", "파괴적 시뮬레이션 명령 금지", "destructive")
+        if parsed.operation == "scale" and not 1 <= int(parsed.args[0]) <= 10:
+            return Decision("deny", "정책 ON 용량 변경은 1~10 replica로 제한", "scale.bounds")
+        rule = self.operations.get(parsed.operation, {})
+        if rule.get("action") in {"allow", "approval", "deny"}:
+            return Decision(rule["action"], rule.get("reason", "작업 정책"), f"operations.{parsed.operation}")
         return Decision("deny", "허용 목록에 없는 명령 (deny-by-default)", "default")
 
     def redact(self, text: str) -> tuple[str, int]:
-        if not self.enabled:
-            return text, 0
         n = 0
         for rx, name in self.redactions:
             text, k = rx.subn(f"[REDACTED:{name}]", text)
             n += k
         return text, n
+
+    def redact_value(self, value):
+        """Return a recursively redacted copy of JSON-compatible output."""
+        if isinstance(value, str):
+            return self.redact(value)[0]
+        if isinstance(value, list):
+            return [self.redact_value(item) for item in value]
+        if isinstance(value, tuple):
+            return tuple(self.redact_value(item) for item in value)
+        if isinstance(value, dict):
+            return {
+                key: "[REDACTED:password]" if re.search(r"(?i)(password|passwd|pwd)", str(key))
+                else self.redact_value(item) for key, item in value.items()
+            }
+        return value

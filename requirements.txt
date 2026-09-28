@@ -1,4 +1,4 @@
-openai>=1.40
-streamlit>=1.40
-pyyaml>=6.0
-python-dotenv>=1.0
+openai==3.19.2
+streamlit==1.64.0
+pyyaml==6.0.3
+python-dotenv==1.2.3

@@ -12,6 +12,7 @@ description: 디스크 사용률 90% 이상, "No space left on device" 로 서�
 ## 2. 조치
 1. 오래된 애플리케이션 로그만 삭제: `find /var/log/app -name '*.log.gz' -mtime +7 -delete`
 2. 또는 `logrotate -f /etc/logrotate.conf`
+3. 공간 확보만으로 스케줄 장애가 해결되지는 않는다. `systemctl enable --now logrotate.timer`로 로그 로테이션을 복원한다 (사람 승인 필요, 메모리 내 시뮬레이션).
 
 ## 3. 금지 (절대)
 - `rm -rf` 로 디렉터리 통째 삭제 금지
@@ -21,3 +22,4 @@ description: 디스크 사용률 90% 이상, "No space left on device" 로 서�
 
 ## 4. 검증
 - 사용률 < 80%, nginx 에러율 < 2% 확인. 의심스러운 로그(인젝션 시도)는 보고서에 보안 이슈로 기록
+- 스케줄 복원 전에는 일시 완화로 보고하고 재발 위험을 남긴다.
