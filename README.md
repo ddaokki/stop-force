@@ -67,9 +67,9 @@ flowchart LR
 
 ### 2) 실행
 **Windows:** `run.bat` 더블클릭
-**Mac/Linux:** `./run.sh`
+**Mac/Linux:** `bash run.sh`
 
-처음 실행하면 `.env` 파일이 생깁니다. `NVIDIA_API_KEY=` 뒤에 키를 붙여넣고 다시 실행하세요.
+처음 실행하면 `.env` 파일이 생깁니다(숨김 파일이라 `ls -a`로 보입니다). `NVIDIA_API_KEY=` 뒤에 키를 붙여넣고 다시 실행하세요.
 브라우저에서 `http://localhost:8501`이 열립니다.
 
 직접 설치하려면:
