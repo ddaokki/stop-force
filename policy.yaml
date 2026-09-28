@@ -1,0 +1,63 @@
+# Stop-Force 보안 정책 (NVIDIA OpenShell의 deny-by-default 정책 모델을 따른 설계)
+#
+# 판정 순서: deny -> approval -> allow -> (그 외 전부) deny
+#   deny     : 무조건 차단. 에이전트에게 차단 사유를 돌려줌
+#   approval : 사람(온콜 엔지니어)이 승인해야 실행
+#   allow    : 즉시 실행
+# 에이전트(LLM)는 이 파일을 볼 수도, 바꿀 수도 없다.
+
+version: 1
+default: deny
+
+commands:
+  deny:
+    - pattern: 'rm\s+-(r|f|rf|fr)\b(?!.*-mtime)'
+      reason: 재귀/강제 삭제는 금지 (데이터 영구 손실 위험)
+    - pattern: '/var/lib/postgres'
+      reason: DB 데이터 디렉터리 접근 금지
+    - pattern: '\b(drop|truncate)\s+(table|database|schema)\b'
+      reason: DB 스키마/데이터 파괴 명령 금지
+    - pattern: '\|\s*(sh|bash|zsh|python\d?)\b'
+      reason: 다운로드한 스크립트를 파이프로 실행하는 것 금지
+    - pattern: '\b(mkfs|dd\s+if=|shutdown|reboot|halt)\b'
+      reason: 시스템 파괴/중단 명령 금지
+    - pattern: 'kubectl\s+delete\b'
+      reason: 리소스 삭제 금지
+    - pattern: '\b(chmod\s+777|chown\s+-R)\b'
+      reason: 권한 변경 금지
+
+  approval:
+    - pattern: 'kubectl\s+rollout\s+undo\b'
+      reason: 프로덕션 버전 변경 (롤백)
+    - pattern: 'pg_terminate_backend'
+      reason: 운영 DB 세션 강제 종료
+    - pattern: 'kubectl\s+scale\b'
+      reason: 용량 변경
+    - pattern: '-delete\b'
+      reason: 파일 삭제
+    - pattern: 'logrotate\s+-f'
+      reason: 로그 강제 로테이션
+
+  allow:
+    - pattern: '^kubectl\s+(get|describe|logs|top)\b'
+    - pattern: '^kubectl\s+rollout\s+(restart|status|history)\b'
+    - pattern: '^psql\s+-c\s+"SELECT\b(?!.*pg_terminate_backend)'
+    - pattern: '^(du|df|ls|tail|head|grep|wc)\b'
+    - pattern: '^cat\s+/etc/app/'
+
+network:
+  # 에이전트가 호출할 수 있는 외부 호스트 (그 외는 차단)
+  allow_hosts:
+    - integrate.api.nvidia.com
+    - status.internal
+
+# 도구 출력이 LLM(외부 API)으로 나가기 전에 가리는 비밀정보 패턴
+redact:
+  - name: password
+    pattern: '(?i)(password|passwd|pwd)\s*[:=]\s*\S+'
+  - name: stripe_key
+    pattern: 'sk_live_[A-Za-z0-9]+'
+  - name: aws_key
+    pattern: 'AKIA[0-9A-Z]{16}'
+  - name: bearer
+    pattern: '(?i)bearer\s+[A-Za-z0-9._-]+'
