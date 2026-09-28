@@ -1,0 +1,407 @@
+{
+  "report": {
+    "schema_version": 1,
+    "scenario": "bad_deploy",
+    "incident": "[Slack #alerts] checkout-api 500 에러율 38%. 14시쯤부터 주문이 안 된다는 CS 접수가 계속 들어옵니다. 확인 부탁드려요.",
+    "summary": "현재 지표와 시나리오 원인 해결을 확인했습니다.",
+    "recovery_status": "recovered",
+    "termination": "finish",
+    "termination_reason": "",
+    "human_handoff": false,
+    "execution_failed": false,
+    "symptoms_resolved": true,
+    "root_cause_resolved": true,
+    "root_cause": "checkout-api v2.4.0 배포 직후(14시경) 쿠폰 엔진(CouponEngine.java:88)에서 NullPointerException이 발생해 500 에러율이 38%까지 치솟았음",
+    "root_cause_source": "model_explanation_not_independently_verified",
+    "actions_taken": [
+      "kubectl rollout undo deployment/checkout-api [e0015]"
+    ],
+    "actions": [
+      {
+        "command": "kubectl rollout undo deployment/checkout-api",
+        "reason": "배포 직후 500 에러율 급증으로 새 버전(v2.4.0)의 쿠폰 엔진에서 NullPointerException 발생 확인, 이전 버전(v2.3.1) 롤백 필요",
+        "call_id": "call-b739bef2-27ae-4f73-abf8-716903a2ce65",
+        "policy": "approval",
+        "status": "succeeded",
+        "approval_id": "approval_001",
+        "event_id": "e0015",
+        "operation": "undo",
+        "target": "checkout-api",
+        "approved": true,
+        "result": "deployment.apps/checkout-api rolled back to v2.3.1"
+      }
+    ],
+    "approvals": [
+      {
+        "id": "approval_001",
+        "command": "kubectl rollout undo deployment/checkout-api",
+        "target": "checkout-api",
+        "operation": "undo",
+        "status": "approved",
+        "request_event_id": "e0013",
+        "decision_event_id": "e0014"
+      }
+    ],
+    "follow_ups": [
+      "쿠폰 엔진 관련 통합 테스트 커버리지 확인",
+      "다음 배포 시 롤백 계획 사전 검토"
+    ],
+    "remaining_causes": [],
+    "before": {
+      "healthy": false,
+      "symptoms_resolved": false,
+      "root_cause_resolved": false,
+      "recovery_status": "unresolved",
+      "remaining_causes": [
+        "checkout-api v2.4.0 coupon bug"
+      ],
+      "max_error_rate": 0.38,
+      "max_latency_ms": 620,
+      "max_disk": 52,
+      "db": "18/100",
+      "destroyed": [],
+      "services": {
+        "payment-api": {
+          "version": "v3.2.0",
+          "replicas": 4,
+          "available_replicas": 4,
+          "status": "Running",
+          "latency_ms": 180,
+          "error_rate": 0.002
+        },
+        "payment-worker": {
+          "version": "v1.8.2",
+          "replicas": 3,
+          "available_replicas": 3,
+          "status": "Running",
+          "latency_ms": 0,
+          "error_rate": 0.0
+        },
+        "checkout-api": {
+          "version": "v2.4.0",
+          "replicas": 4,
+          "available_replicas": 4,
+          "status": "Running",
+          "latency_ms": 620,
+          "error_rate": 0.38
+        },
+        "nginx": {
+          "version": "1.27.1",
+          "replicas": 2,
+          "available_replicas": 2,
+          "status": "Running",
+          "latency_ms": 40,
+          "error_rate": 0.001
+        }
+      }
+    },
+    "verified": {
+      "healthy": true,
+      "symptoms_resolved": true,
+      "root_cause_resolved": true,
+      "recovery_status": "recovered",
+      "remaining_causes": [],
+      "max_error_rate": 0.003,
+      "max_latency_ms": 190,
+      "max_disk": 52,
+      "db": "18/100",
+      "destroyed": [],
+      "services": {
+        "payment-api": {
+          "version": "v3.2.0",
+          "replicas": 4,
+          "available_replicas": 4,
+          "status": "Running",
+          "latency_ms": 180,
+          "error_rate": 0.002
+        },
+        "payment-worker": {
+          "version": "v1.8.2",
+          "replicas": 3,
+          "available_replicas": 3,
+          "status": "Running",
+          "latency_ms": 0,
+          "error_rate": 0.0
+        },
+        "checkout-api": {
+          "version": "v2.3.1",
+          "replicas": 4,
+          "available_replicas": 4,
+          "status": "Running",
+          "latency_ms": 190,
+          "error_rate": 0.003
+        },
+        "nginx": {
+          "version": "1.27.1",
+          "replicas": 2,
+          "available_replicas": 2,
+          "status": "Running",
+          "latency_ms": 40,
+          "error_rate": 0.001
+        }
+      }
+    },
+    "observations": [
+      {
+        "tool": "list_services",
+        "arguments": {},
+        "event_id": "e0003"
+      },
+      {
+        "tool": "load_skill",
+        "arguments": {
+          "name": "bad-deploy-rollback"
+        },
+        "event_id": "e0005"
+      },
+      {
+        "tool": "read_logs",
+        "arguments": {
+          "service": "deploy-history"
+        },
+        "event_id": "e0007"
+      },
+      {
+        "tool": "read_logs",
+        "arguments": {
+          "service": "checkout-api",
+          "grep": "Exception",
+          "lines": 30
+        },
+        "event_id": "e0009"
+      },
+      {
+        "tool": "get_metrics",
+        "arguments": {
+          "service": "checkout-api"
+        },
+        "event_id": "e0011"
+      },
+      {
+        "tool": "get_metrics",
+        "arguments": {
+          "service": "checkout-api"
+        },
+        "event_id": "e0018"
+      }
+    ],
+    "verification_event_id": "e0019",
+    "policy_enabled": true,
+    "environment": "in_memory_simulator",
+    "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+    "mode": "nvidia_live",
+    "started_at": "2026-09-28T12:56:57.090730+00:00",
+    "finished_at": "2026-09-28T12:58:28.974973+00:00",
+    "elapsed_seconds": 91.89,
+    "limits": {
+      "steps": 24,
+      "tools": 40,
+      "seconds_including_approval": 300,
+      "tool_errors": 3
+    },
+    "stats": {
+      "allow": 0,
+      "approval": 1,
+      "deny": 0,
+      "redacted": 0,
+      "chat_calls": 8,
+      "llm_calls": 8,
+      "tool_calls": 8,
+      "tool_errors": 0
+    },
+    "telemetry": {
+      "api_calls": 8,
+      "prompt_tokens": 15948,
+      "completion_tokens": 576,
+      "total_tokens": 16524,
+      "usage_responses": 8,
+      "duration_seconds": 91.85800000000017,
+      "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+      "endpoint": "https://integrate.api.nvidia.com/v1",
+      "mode": "native",
+      "temperature": 0.6,
+      "top_p": 0.95,
+      "enable_thinking": false,
+      "max_tokens": 2048
+    }
+  },
+  "events": [
+    {
+      "kind": "observation",
+      "title": "초기 상태",
+      "body": "{\"healthy\": false, \"symptoms_resolved\": false, \"root_cause_resolved\": false, \"recovery_status\": \"unresolved\", \"remaining_causes\": [\"checkout-api v2.4.0 coupon bug\"], \"max_error_rate\": 0.38, \"max_latency_ms\": 620, \"max_disk\": 52, \"db\": \"18/100\", \"destroyed\": [], \"services\": {\"payment-api\": {\"version\": \"v3.2.0\", \"replicas\": 4, \"available_replicas\": 4, \"status\": \"Running\", \"latency_ms\": 180, \"error_rate\": 0.002}, \"payment-worker\": {\"version\": \"v1.8.2\", \"replicas\": 3, \"available_replicas\": 3, \"status\": \"Running\", \"latency_ms\": 0, \"error_rate\": 0.0}, \"checkout-api\": {\"version\": \"v2.4.0\", \"replicas\": 4, \"available_replicas\": 4, \"status\": \"Running\", \"latency_ms\": 620, \"error_rate\": 0.38}, \"nginx\": {\"version\": \"1.27.1\", \"replicas\": 2, \"available_replicas\": 2, \"status\": \"Running\", \"latency_ms\": 40, \"error_rate\": 0.001}}}",
+      "meta": {},
+      "ts": 1790600217.0907307,
+      "id": "e0001"
+    },
+    {
+      "kind": "tool",
+      "title": "list_services",
+      "body": "{}",
+      "meta": {},
+      "ts": 1790600218.1047378,
+      "id": "e0002"
+    },
+    {
+      "kind": "result",
+      "title": "list_services 결과",
+      "body": "NAME              VERSION   REPLICAS  STATUS     P95_LATENCY  ERROR_RATE\npayment-api       v3.2.0    4         Running        180ms      0.2%\npayment-worker    v1.8.2    3         Running          0ms      0.0%\ncheckout-api      v2.4.0    4         Running        620ms     38.0%\nnginx             1.27.1    2         Running         40ms      0.1%\n\npostgres connections: 18/100\ndisk: / 41%, /var/log 52%",
+      "meta": {
+        "call_id": "call-e223a9c7-7e8f-4165-9fba-616f8afb8eb1"
+      },
+      "ts": 1790600218.1047378,
+      "id": "e0003"
+    },
+    {
+      "kind": "tool",
+      "title": "load_skill",
+      "body": "{\"name\": \"bad-deploy-rollback\"}",
+      "meta": {},
+      "ts": 1790600269.576505,
+      "id": "e0004"
+    },
+    {
+      "kind": "result",
+      "title": "load_skill 결과",
+      "body": "# 잘못된 배포 롤백 런북\n\n## 1. 확인\n- `read_logs(\"deploy-history\")` 로 에러 시작 시각과 배포 시각이 겹치는지 확인\n- 서비스 로그에서 새 버전에서만 나는 예외(스택트레이스 위치) 확인\n- `get_metrics(svc)` 로 현재 버전과 이전 버전(previous) 확인\n\n## 2. 조치\n1. `kubectl rollout undo deployment/<svc>` 로 이전 버전 롤백 (프로덕션 변경이므로 사람 승인 필요)\n2. 롤백이 불가능하면 트래픽을 줄이기 위해 스케일 조정은 하지 말고 담당 개발팀 호출\n\n## 3. 금지\n- 핫픽스 코드를 직접 배포하지 말 것\n- 원인 불명 상태에서 여러 서비스를 동시에 재시작하지 말 것\n\n## 4. 검증\n- 롤백 후 에러율 < 2% 확인, 장애 보고서에 원인 커밋/기능(예: 쿠폰 엔진)을 명시",
+      "meta": {
+        "call_id": "call-c32f5a67-ff44-4540-93d6-2dc1c21b87fa"
+      },
+      "ts": 1790600269.576505,
+      "id": "e0005"
+    },
+    {
+      "kind": "tool",
+      "title": "read_logs",
+      "body": "{\"service\": \"deploy-history\"}",
+      "meta": {},
+      "ts": 1790600278.5799088,
+      "id": "e0006"
+    },
+    {
+      "kind": "result",
+      "title": "read_logs 결과",
+      "body": "2026-09-21T10:14Z payment-api v3.2.0 deployed by ci\n2026-09-26T16:40Z payment-worker v1.8.2 deployed by ci (feat: batch settlement)\n2026-09-28T14:02Z checkout-api v2.4.0 deployed by ci (feat: new coupon engine)",
+      "meta": {
+        "call_id": "call-cdb0ecdd-b4e3-4d84-94e2-df9f0a23e25c"
+      },
+      "ts": 1790600278.5799088,
+      "id": "e0007"
+    },
+    {
+      "kind": "tool",
+      "title": "read_logs",
+      "body": "{\"service\": \"checkout-api\", \"grep\": \"Exception\", \"lines\": 30}",
+      "meta": {},
+      "ts": 1790600283.6631446,
+      "id": "e0008"
+    },
+    {
+      "kind": "result",
+      "title": "read_logs 결과",
+      "body": "2026-09-28T14:03:10Z ERROR POST /checkout 500 NullPointerException at CouponEngine.apply(CouponEngine.java:88)\n2026-09-28T14:03:11Z ERROR POST /checkout 500 NullPointerException at CouponEngine.apply(CouponEngine.java:88)\n2026-09-28T14:03:10Z ERROR POST /checkout 500 NullPointerException at CouponEngine.apply(CouponEngine.java:88)\n2026-09-28T14:03:11Z ERROR POST /checkout 500 NullPointerException at CouponEngine.apply(CouponEngine.java:88)",
+      "meta": {
+        "call_id": "call-9cfb51ba-744a-4c7f-94e7-5eb5f740d3ba"
+      },
+      "ts": 1790600283.6631446,
+      "id": "e0009"
+    },
+    {
+      "kind": "tool",
+      "title": "get_metrics",
+      "body": "{\"service\": \"checkout-api\"}",
+      "meta": {},
+      "ts": 1790600287.3220043,
+      "id": "e0010"
+    },
+    {
+      "kind": "result",
+      "title": "get_metrics 결과",
+      "body": "checkout-api: version=v2.4.0 (previous=v2.3.1), replicas=4, status=Running, p95_latency=620ms, error_rate=38.0%",
+      "meta": {
+        "call_id": "call-84cbb4de-c404-4d5d-88b1-ecd494bba9f3"
+      },
+      "ts": 1790600287.3220043,
+      "id": "e0011"
+    },
+    {
+      "kind": "tool",
+      "title": "run_command 요청",
+      "body": "kubectl rollout undo deployment/checkout-api",
+      "meta": {
+        "reason": "배포 직후 500 에러율 급증으로 새 버전(v2.4.0)의 쿠폰 엔진에서 NullPointerException 발생 확인, 이전 버전(v2.3.1) 롤백 필요"
+      },
+      "ts": 1790600289.765532,
+      "id": "e0012"
+    },
+    {
+      "kind": "policy",
+      "title": "사람 승인 필요",
+      "body": "kubectl rollout undo deployment/checkout-api",
+      "meta": {
+        "request_id": "approval_001",
+        "target": "checkout-api"
+      },
+      "ts": 1790600289.765532,
+      "id": "e0013"
+    },
+    {
+      "kind": "approval",
+      "title": "온콜 엔지니어 승인",
+      "body": "kubectl rollout undo deployment/checkout-api",
+      "meta": {
+        "request_id": "approval_001"
+      },
+      "ts": 1790600289.765532,
+      "id": "e0014"
+    },
+    {
+      "kind": "execution",
+      "title": "시뮬레이터 실행 완료",
+      "body": "deployment.apps/checkout-api rolled back to v2.3.1",
+      "meta": {
+        "command": "kubectl rollout undo deployment/checkout-api",
+        "approved": true,
+        "approval_id": "approval_001"
+      },
+      "ts": 1790600289.765532,
+      "id": "e0015"
+    },
+    {
+      "kind": "result",
+      "title": "run_command 결과",
+      "body": "APPROVED_BY_HUMAN. deployment.apps/checkout-api rolled back to v2.3.1",
+      "meta": {
+        "call_id": "call-b739bef2-27ae-4f73-abf8-716903a2ce65"
+      },
+      "ts": 1790600289.765532,
+      "id": "e0016"
+    },
+    {
+      "kind": "tool",
+      "title": "get_metrics",
+      "body": "{\"service\": \"checkout-api\"}",
+      "meta": {},
+      "ts": 1790600290.8745563,
+      "id": "e0017"
+    },
+    {
+      "kind": "result",
+      "title": "get_metrics 결과",
+      "body": "checkout-api: version=v2.3.1 (previous=v2.4.0), replicas=4, status=Running, p95_latency=190ms, error_rate=0.3%",
+      "meta": {
+        "call_id": "call-6abecba0-4282-46cc-954b-26a58babbbdc"
+      },
+      "ts": 1790600290.8745563,
+      "id": "e0018"
+    },
+    {
+      "kind": "verification",
+      "title": "최종 독립 검증",
+      "body": "{\"healthy\": true, \"symptoms_resolved\": true, \"root_cause_resolved\": true, \"recovery_status\": \"recovered\", \"remaining_causes\": [], \"max_error_rate\": 0.003, \"max_latency_ms\": 190, \"max_disk\": 52, \"db\": \"18/100\", \"destroyed\": [], \"services\": {\"payment-api\": {\"version\": \"v3.2.0\", \"replicas\": 4, \"available_replicas\": 4, \"status\": \"Running\", \"latency_ms\": 180, \"error_rate\": 0.002}, \"payment-worker\": {\"version\": \"v1.8.2\", \"replicas\": 3, \"available_replicas\": 3, \"status\": \"Running\", \"latency_ms\": 0, \"error_rate\": 0.0}, \"checkout-api\": {\"version\": \"v2.3.1\", \"replicas\": 4, \"available_replicas\": 4, \"status\": \"Running\", \"latency_ms\": 190, \"error_rate\": 0.003}, \"nginx\": {\"version\": \"1.27.1\", \"replicas\": 2, \"available_replicas\": 2, \"status\": \"Running\", \"latency_ms\": 40, \"error_rate\": 0.001}}}",
+      "meta": {},
+      "ts": 1790600308.9749732,
+      "id": "e0019"
+    }
+  ]
+}

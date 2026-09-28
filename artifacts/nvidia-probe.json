@@ -1,0 +1,29 @@
+{
+  "started_at": "2026-09-28T12:52:59.924818+00:00",
+  "sdk": "openai 3.19.2",
+  "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+  "mode": "nvidia_live",
+  "environment": "in_memory_simulator",
+  "status": "no_native_call",
+  "tool_calls": [],
+  "finish_reason": "length",
+  "telemetry": {
+    "api_calls": 1,
+    "prompt_tokens": 280,
+    "completion_tokens": 256,
+    "total_tokens": 536,
+    "usage_responses": 1,
+    "duration_seconds": 8.765999999999622,
+    "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+    "endpoint": "https://integrate.api.nvidia.com/v1",
+    "mode": "native"
+  },
+  "finished_at": "2026-09-28T12:53:08.689891+00:00",
+  "request_settings": {
+    "max_tokens": 256,
+    "enable_thinking": "provider_default",
+    "request_timeout_seconds": 30,
+    "max_retries": 0
+  },
+  "interpretation": "Output limit reached. Native tool support was inconclusive in this probe; later end-to-end traces establish native calls."
+}

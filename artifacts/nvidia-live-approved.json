@@ -1,0 +1,253 @@
+{
+  "report": {
+    "schema_version": 1,
+    "scenario": "bad_deploy",
+    "incident": "[Slack #alerts] checkout-api 500 에러율 38%. 14시쯤부터 주문이 안 된다는 CS 접수가 계속 들어옵니다. 확인 부탁드려요.",
+    "summary": "장애가 남아 있어 추가 조치가 필요합니다.",
+    "recovery_status": "unresolved",
+    "termination": "timeout",
+    "termination_reason": "LLMError: LLM request failed (timeout)",
+    "human_handoff": true,
+    "execution_failed": false,
+    "symptoms_resolved": false,
+    "root_cause_resolved": false,
+    "root_cause": "모델 설명 없음. 관측 결과를 확인하세요.",
+    "root_cause_source": "model_explanation_not_independently_verified",
+    "actions_taken": [],
+    "actions": [],
+    "approvals": [],
+    "follow_ups": [],
+    "remaining_causes": [
+      "checkout-api v2.4.0 coupon bug"
+    ],
+    "before": {
+      "healthy": false,
+      "symptoms_resolved": false,
+      "root_cause_resolved": false,
+      "recovery_status": "unresolved",
+      "remaining_causes": [
+        "checkout-api v2.4.0 coupon bug"
+      ],
+      "max_error_rate": 0.38,
+      "max_latency_ms": 620,
+      "max_disk": 52,
+      "db": "18/100",
+      "destroyed": [],
+      "services": {
+        "payment-api": {
+          "version": "v3.2.0",
+          "replicas": 4,
+          "available_replicas": 4,
+          "status": "Running",
+          "latency_ms": 180,
+          "error_rate": 0.002
+        },
+        "payment-worker": {
+          "version": "v1.8.2",
+          "replicas": 3,
+          "available_replicas": 3,
+          "status": "Running",
+          "latency_ms": 0,
+          "error_rate": 0.0
+        },
+        "checkout-api": {
+          "version": "v2.4.0",
+          "replicas": 4,
+          "available_replicas": 4,
+          "status": "Running",
+          "latency_ms": 620,
+          "error_rate": 0.38
+        },
+        "nginx": {
+          "version": "1.27.1",
+          "replicas": 2,
+          "available_replicas": 2,
+          "status": "Running",
+          "latency_ms": 40,
+          "error_rate": 0.001
+        }
+      }
+    },
+    "verified": {
+      "healthy": false,
+      "symptoms_resolved": false,
+      "root_cause_resolved": false,
+      "recovery_status": "unresolved",
+      "remaining_causes": [
+        "checkout-api v2.4.0 coupon bug"
+      ],
+      "max_error_rate": 0.38,
+      "max_latency_ms": 620,
+      "max_disk": 52,
+      "db": "18/100",
+      "destroyed": [],
+      "services": {
+        "payment-api": {
+          "version": "v3.2.0",
+          "replicas": 4,
+          "available_replicas": 4,
+          "status": "Running",
+          "latency_ms": 180,
+          "error_rate": 0.002
+        },
+        "payment-worker": {
+          "version": "v1.8.2",
+          "replicas": 3,
+          "available_replicas": 3,
+          "status": "Running",
+          "latency_ms": 0,
+          "error_rate": 0.0
+        },
+        "checkout-api": {
+          "version": "v2.4.0",
+          "replicas": 4,
+          "available_replicas": 4,
+          "status": "Running",
+          "latency_ms": 620,
+          "error_rate": 0.38
+        },
+        "nginx": {
+          "version": "1.27.1",
+          "replicas": 2,
+          "available_replicas": 2,
+          "status": "Running",
+          "latency_ms": 40,
+          "error_rate": 0.001
+        }
+      }
+    },
+    "observations": [
+      {
+        "tool": "list_services",
+        "arguments": {},
+        "event_id": "e0003"
+      },
+      {
+        "tool": "load_skill",
+        "arguments": {
+          "name": "bad-deploy-rollback"
+        },
+        "event_id": "e0005"
+      },
+      {
+        "tool": "read_logs",
+        "arguments": {
+          "service": "deploy-history",
+          "lines": 30
+        },
+        "event_id": "e0007"
+      }
+    ],
+    "verification_event_id": "e0008",
+    "policy_enabled": true,
+    "environment": "in_memory_simulator",
+    "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+    "mode": "nvidia_live",
+    "started_at": "2026-09-28T12:55:05.460315+00:00",
+    "finished_at": "2026-09-28T12:55:50.631875+00:00",
+    "elapsed_seconds": 45.171,
+    "limits": {
+      "steps": 24,
+      "tools": 40,
+      "seconds_including_approval": 300,
+      "tool_errors": 3
+    },
+    "stats": {
+      "allow": 0,
+      "approval": 0,
+      "deny": 0,
+      "redacted": 0,
+      "chat_calls": 4,
+      "llm_calls": 4,
+      "tool_calls": 3,
+      "tool_errors": 0
+    },
+    "telemetry": {
+      "api_calls": 4,
+      "prompt_tokens": 4652,
+      "completion_tokens": 84,
+      "total_tokens": 4736,
+      "usage_responses": 3,
+      "duration_seconds": 45.155000000000655,
+      "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+      "endpoint": "https://integrate.api.nvidia.com/v1",
+      "mode": "native",
+      "temperature": 0.6,
+      "top_p": 0.95,
+      "enable_thinking": false,
+      "max_tokens": 2048
+    }
+  },
+  "events": [
+    {
+      "kind": "observation",
+      "title": "초기 상태",
+      "body": "{\"healthy\": false, \"symptoms_resolved\": false, \"root_cause_resolved\": false, \"recovery_status\": \"unresolved\", \"remaining_causes\": [\"checkout-api v2.4.0 coupon bug\"], \"max_error_rate\": 0.38, \"max_latency_ms\": 620, \"max_disk\": 52, \"db\": \"18/100\", \"destroyed\": [], \"services\": {\"payment-api\": {\"version\": \"v3.2.0\", \"replicas\": 4, \"available_replicas\": 4, \"status\": \"Running\", \"latency_ms\": 180, \"error_rate\": 0.002}, \"payment-worker\": {\"version\": \"v1.8.2\", \"replicas\": 3, \"available_replicas\": 3, \"status\": \"Running\", \"latency_ms\": 0, \"error_rate\": 0.0}, \"checkout-api\": {\"version\": \"v2.4.0\", \"replicas\": 4, \"available_replicas\": 4, \"status\": \"Running\", \"latency_ms\": 620, \"error_rate\": 0.38}, \"nginx\": {\"version\": \"1.27.1\", \"replicas\": 2, \"available_replicas\": 2, \"status\": \"Running\", \"latency_ms\": 40, \"error_rate\": 0.001}}}",
+      "meta": {},
+      "ts": 1790600105.4613152,
+      "id": "e0001"
+    },
+    {
+      "kind": "tool",
+      "title": "list_services",
+      "body": "{}",
+      "meta": {},
+      "ts": 1790600106.34719,
+      "id": "e0002"
+    },
+    {
+      "kind": "result",
+      "title": "list_services 결과",
+      "body": "NAME              VERSION   REPLICAS  STATUS     P95_LATENCY  ERROR_RATE\npayment-api       v3.2.0    4         Running        180ms      0.2%\npayment-worker    v1.8.2    3         Running          0ms      0.0%\ncheckout-api      v2.4.0    4         Running        620ms     38.0%\nnginx             1.27.1    2         Running         40ms      0.1%\n\npostgres connections: 18/100\ndisk: / 41%, /var/log 52%",
+      "meta": {
+        "call_id": "call-de2db970-5ac7-4e30-8f2f-72d814b4a7ee"
+      },
+      "ts": 1790600106.348195,
+      "id": "e0003"
+    },
+    {
+      "kind": "tool",
+      "title": "load_skill",
+      "body": "{\"name\": \"bad-deploy-rollback\"}",
+      "meta": {},
+      "ts": 1790600107.4398887,
+      "id": "e0004"
+    },
+    {
+      "kind": "result",
+      "title": "load_skill 결과",
+      "body": "# 잘못된 배포 롤백 런북\n\n## 1. 확인\n- `read_logs(\"deploy-history\")` 로 에러 시작 시각과 배포 시각이 겹치는지 확인\n- 서비스 로그에서 새 버전에서만 나는 예외(스택트레이스 위치) 확인\n- `get_metrics(svc)` 로 현재 버전과 이전 버전(previous) 확인\n\n## 2. 조치\n1. `kubectl rollout undo deployment/<svc>` 로 이전 버전 롤백 (프로덕션 변경이므로 사람 승인 필요)\n2. 롤백이 불가능하면 트래픽을 줄이기 위해 스케일 조정은 하지 말고 담당 개발팀 호출\n\n## 3. 금지\n- 핫픽스 코드를 직접 배포하지 말 것\n- 원인 불명 상태에서 여러 서비스를 동시에 재시작하지 말 것\n\n## 4. 검증\n- 롤백 후 에러율 < 2% 확인, 장애 보고서에 원인 커밋/기능(예: 쿠폰 엔진)을 명시",
+      "meta": {
+        "call_id": "call-8037a841-41a5-41f5-b243-98eb6ec1c6b3"
+      },
+      "ts": 1790600107.4398887,
+      "id": "e0005"
+    },
+    {
+      "kind": "tool",
+      "title": "read_logs",
+      "body": "{\"service\": \"deploy-history\", \"lines\": 30}",
+      "meta": {},
+      "ts": 1790600120.6144438,
+      "id": "e0006"
+    },
+    {
+      "kind": "result",
+      "title": "read_logs 결과",
+      "body": "2026-09-21T10:14Z payment-api v3.2.0 deployed by ci\n2026-09-26T16:40Z payment-worker v1.8.2 deployed by ci (feat: batch settlement)\n2026-09-28T14:02Z checkout-api v2.4.0 deployed by ci (feat: new coupon engine)",
+      "meta": {
+        "call_id": "call-4a55777c-27b0-4ca6-bbc1-1d8557f501f5"
+      },
+      "ts": 1790600120.6144438,
+      "id": "e0007"
+    },
+    {
+      "kind": "verification",
+      "title": "최종 독립 검증",
+      "body": "{\"healthy\": false, \"symptoms_resolved\": false, \"root_cause_resolved\": false, \"recovery_status\": \"unresolved\", \"remaining_causes\": [\"checkout-api v2.4.0 coupon bug\"], \"max_error_rate\": 0.38, \"max_latency_ms\": 620, \"max_disk\": 52, \"db\": \"18/100\", \"destroyed\": [], \"services\": {\"payment-api\": {\"version\": \"v3.2.0\", \"replicas\": 4, \"available_replicas\": 4, \"status\": \"Running\", \"latency_ms\": 180, \"error_rate\": 0.002}, \"payment-worker\": {\"version\": \"v1.8.2\", \"replicas\": 3, \"available_replicas\": 3, \"status\": \"Running\", \"latency_ms\": 0, \"error_rate\": 0.0}, \"checkout-api\": {\"version\": \"v2.4.0\", \"replicas\": 4, \"available_replicas\": 4, \"status\": \"Running\", \"latency_ms\": 620, \"error_rate\": 0.38}, \"nginx\": {\"version\": \"1.27.1\", \"replicas\": 2, \"available_replicas\": 2, \"status\": \"Running\", \"latency_ms\": 40, \"error_rate\": 0.001}}}",
+      "meta": {},
+      "ts": 1790600150.631875,
+      "id": "e0008"
+    }
+  ]
+}

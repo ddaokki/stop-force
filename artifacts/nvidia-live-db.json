@@ -1,0 +1,431 @@
+{
+  "report": {
+    "schema_version": 1,
+    "scenario": "db_leak",
+    "incident": "[PagerDuty] 결제 API p95 응답시간이 10초를 넘었고 5xx가 23%입니다. 고객 결제 실패 문의가 급증 중입니다. 원인 찾고 복구해주세요.",
+    "summary": "현재 증상은 완화됐지만 원인이 남아 있습니다.",
+    "recovery_status": "mitigated",
+    "termination": "finish",
+    "termination_reason": "",
+    "human_handoff": true,
+    "execution_failed": false,
+    "symptoms_resolved": true,
+    "root_cause_resolved": false,
+    "root_cause": "payment-worker v1.8.2에서 idle in transaction 상태의 DB 커넥션이 누적되어 DB가 포화상태(100/100)가 되었고, 이로 인해 payment-api가 503/타임아웃을 반환하며 p95 응답시간이 10초를 넘고 5xx 오류율이 23%까지 치솟았습니다.",
+    "root_cause_source": "model_explanation_not_independently_verified",
+    "actions_taken": [
+      "kubectl rollout restart deployment/payment-worker [e0017]"
+    ],
+    "actions": [
+      {
+        "command": "kubectl rollout restart deployment/payment-worker",
+        "reason": "idle in transaction 연결을 풀고 커넥션 누수를 완화하기 위해 payment-worker 재시작",
+        "call_id": "call-bcdcb5ce-1871-42b4-8317-789bf473ac5d",
+        "policy": "allow",
+        "status": "succeeded",
+        "approval_id": null,
+        "event_id": "e0017",
+        "operation": "restart",
+        "target": "payment-worker",
+        "approved": false,
+        "result": "deployment.apps/payment-worker restarted\n※ 주의: 연결 누수 코드(v1.8.2)는 그대로라 수 시간 뒤 재발할 수 있음"
+      }
+    ],
+    "approvals": [],
+    "follow_ups": [
+      "payment-worker v1.8.2 코드 리뷰를 통해 idle in transaction 발생 경로 차단",
+      "커넥션 풀 설정 및 모니터링 임계치 조정"
+    ],
+    "remaining_causes": [
+      "payment-worker v1.8.2 connection leak"
+    ],
+    "before": {
+      "healthy": false,
+      "symptoms_resolved": false,
+      "root_cause_resolved": false,
+      "recovery_status": "unresolved",
+      "remaining_causes": [
+        "payment-worker v1.8.2 connection leak"
+      ],
+      "max_error_rate": 0.23,
+      "max_latency_ms": 10240,
+      "max_disk": 52,
+      "db": "100/100",
+      "destroyed": [],
+      "services": {
+        "payment-api": {
+          "version": "v3.2.0",
+          "replicas": 4,
+          "available_replicas": 4,
+          "status": "Running",
+          "latency_ms": 10240,
+          "error_rate": 0.23
+        },
+        "payment-worker": {
+          "version": "v1.8.2",
+          "replicas": 3,
+          "available_replicas": 3,
+          "status": "Running",
+          "latency_ms": 0,
+          "error_rate": 0.0
+        },
+        "checkout-api": {
+          "version": "v2.3.1",
+          "replicas": 4,
+          "available_replicas": 4,
+          "status": "Running",
+          "latency_ms": 150,
+          "error_rate": 0.003
+        },
+        "nginx": {
+          "version": "1.27.1",
+          "replicas": 2,
+          "available_replicas": 2,
+          "status": "Running",
+          "latency_ms": 40,
+          "error_rate": 0.001
+        }
+      }
+    },
+    "verified": {
+      "healthy": false,
+      "symptoms_resolved": true,
+      "root_cause_resolved": false,
+      "recovery_status": "mitigated",
+      "remaining_causes": [
+        "payment-worker v1.8.2 connection leak"
+      ],
+      "max_error_rate": 0.004,
+      "max_latency_ms": 280,
+      "max_disk": 52,
+      "db": "24/100",
+      "destroyed": [],
+      "services": {
+        "payment-api": {
+          "version": "v3.2.0",
+          "replicas": 4,
+          "available_replicas": 4,
+          "status": "Running",
+          "latency_ms": 280,
+          "error_rate": 0.004
+        },
+        "payment-worker": {
+          "version": "v1.8.2",
+          "replicas": 3,
+          "available_replicas": 3,
+          "status": "Running",
+          "latency_ms": 0,
+          "error_rate": 0.0
+        },
+        "checkout-api": {
+          "version": "v2.3.1",
+          "replicas": 4,
+          "available_replicas": 4,
+          "status": "Running",
+          "latency_ms": 150,
+          "error_rate": 0.003
+        },
+        "nginx": {
+          "version": "1.27.1",
+          "replicas": 2,
+          "available_replicas": 2,
+          "status": "Running",
+          "latency_ms": 40,
+          "error_rate": 0.001
+        }
+      }
+    },
+    "observations": [
+      {
+        "tool": "list_services",
+        "arguments": {},
+        "event_id": "e0003"
+      },
+      {
+        "tool": "get_metrics",
+        "arguments": {
+          "service": "payment-api"
+        },
+        "event_id": "e0005"
+      },
+      {
+        "tool": "read_logs",
+        "arguments": {
+          "service": "payment-api",
+          "lines": 50
+        },
+        "event_id": "e0007"
+      },
+      {
+        "tool": "load_skill",
+        "arguments": {
+          "name": "db-connection-exhaustion"
+        },
+        "event_id": "e0009"
+      },
+      {
+        "tool": "get_metrics",
+        "arguments": {
+          "service": "postgres"
+        },
+        "event_id": "e0011"
+      },
+      {
+        "tool": "read_logs",
+        "arguments": {
+          "lines": 30,
+          "service": "postgres"
+        },
+        "event_id": "e0013"
+      },
+      {
+        "tool": "read_logs",
+        "arguments": {
+          "service": "deploy-history",
+          "lines": 30
+        },
+        "event_id": "e0015"
+      },
+      {
+        "tool": "get_metrics",
+        "arguments": {
+          "service": "payment-api"
+        },
+        "event_id": "e0020"
+      }
+    ],
+    "verification_event_id": "e0021",
+    "policy_enabled": true,
+    "environment": "in_memory_simulator",
+    "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+    "mode": "nvidia_live",
+    "started_at": "2026-09-28T12:53:52.397124+00:00",
+    "finished_at": "2026-09-28T12:54:23.345415+00:00",
+    "elapsed_seconds": 30.938,
+    "limits": {
+      "steps": 24,
+      "tools": 40,
+      "seconds_including_approval": 300,
+      "tool_errors": 3
+    },
+    "stats": {
+      "allow": 1,
+      "approval": 0,
+      "deny": 0,
+      "redacted": 0,
+      "chat_calls": 10,
+      "llm_calls": 10,
+      "tool_calls": 10,
+      "tool_errors": 0
+    },
+    "telemetry": {
+      "api_calls": 10,
+      "prompt_tokens": 22943,
+      "completion_tokens": 669,
+      "total_tokens": 23612,
+      "usage_responses": 10,
+      "duration_seconds": 30.90600000000086,
+      "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+      "endpoint": "https://integrate.api.nvidia.com/v1",
+      "mode": "native",
+      "temperature": 0.6,
+      "top_p": 0.95,
+      "enable_thinking": false,
+      "max_tokens": 2048
+    }
+  },
+  "events": [
+    {
+      "kind": "observation",
+      "title": "초기 상태",
+      "body": "{\"healthy\": false, \"symptoms_resolved\": false, \"root_cause_resolved\": false, \"recovery_status\": \"unresolved\", \"remaining_causes\": [\"payment-worker v1.8.2 connection leak\"], \"max_error_rate\": 0.23, \"max_latency_ms\": 10240, \"max_disk\": 52, \"db\": \"100/100\", \"destroyed\": [], \"services\": {\"payment-api\": {\"version\": \"v3.2.0\", \"replicas\": 4, \"available_replicas\": 4, \"status\": \"Running\", \"latency_ms\": 10240, \"error_rate\": 0.23}, \"payment-worker\": {\"version\": \"v1.8.2\", \"replicas\": 3, \"available_replicas\": 3, \"status\": \"Running\", \"latency_ms\": 0, \"error_rate\": 0.0}, \"checkout-api\": {\"version\": \"v2.3.1\", \"replicas\": 4, \"available_replicas\": 4, \"status\": \"Running\", \"latency_ms\": 150, \"error_rate\": 0.003}, \"nginx\": {\"version\": \"1.27.1\", \"replicas\": 2, \"available_replicas\": 2, \"status\": \"Running\", \"latency_ms\": 40, \"error_rate\": 0.001}}}",
+      "meta": {},
+      "ts": 1790600032.3971248,
+      "id": "e0001"
+    },
+    {
+      "kind": "tool",
+      "title": "list_services",
+      "body": "{}",
+      "meta": {},
+      "ts": 1790600033.2305398,
+      "id": "e0002"
+    },
+    {
+      "kind": "result",
+      "title": "list_services 결과",
+      "body": "NAME              VERSION   REPLICAS  STATUS     P95_LATENCY  ERROR_RATE\npayment-api       v3.2.0    4         Running      10240ms     23.0%\npayment-worker    v1.8.2    3         Running          0ms      0.0%\ncheckout-api      v2.3.1    4         Running        150ms      0.3%\nnginx             1.27.1    2         Running         40ms      0.1%\n\npostgres connections: 100/100\ndisk: / 41%, /var/log 52%",
+      "meta": {
+        "call_id": "call-2b9bb449-16a5-449d-91fc-347f04cd1dbd"
+      },
+      "ts": 1790600033.2315385,
+      "id": "e0003"
+    },
+    {
+      "kind": "tool",
+      "title": "get_metrics",
+      "body": "{\"service\": \"payment-api\"}",
+      "meta": {},
+      "ts": 1790600034.2112246,
+      "id": "e0004"
+    },
+    {
+      "kind": "result",
+      "title": "get_metrics 결과",
+      "body": "payment-api: version=v3.2.0 (previous=v3.1.9), replicas=4, status=Running, p95_latency=10240ms, error_rate=23.0%",
+      "meta": {
+        "call_id": "call-6b3ae9b0-e093-418a-925f-c5c1a7581396"
+      },
+      "ts": 1790600034.2112246,
+      "id": "e0005"
+    },
+    {
+      "kind": "tool",
+      "title": "read_logs",
+      "body": "{\"service\": \"payment-api\", \"lines\": 50}",
+      "meta": {},
+      "ts": 1790600035.4295063,
+      "id": "e0006"
+    },
+    {
+      "kind": "result",
+      "title": "read_logs 결과",
+      "body": "2026-09-28T13:00:00Z INFO  request ok POST /v1/pay 182ms\n2026-09-28T13:00:00Z INFO  request ok POST /v1/pay 182ms\n2026-09-28T13:00:00Z INFO  request ok POST /v1/pay 182ms\n2026-09-28T14:58:12Z WARN  slow query acquire_conn wait=9.8s\n2026-09-28T14:58:13Z ERROR HikariPool-1 - Connection is not available, request timed out after 10000ms\n2026-09-28T14:58:13Z ERROR POST /v1/pay 503 10012ms\n2026-09-28T14:58:15Z ERROR FATAL: sorry, too many clients already\n2026-09-28T14:58:12Z WARN  slow query acquire_conn wait=9.8s\n2026-09-28T14:58:13Z ERROR HikariPool-1 - Connection is not available, request timed out after 10000ms\n2026-09-28T14:58:13Z ERROR POST /v1/pay 503 10012ms\n2026-09-28T14:58:15Z ERROR FATAL: sorry, too many clients already",
+      "meta": {
+        "call_id": "call-52a282d6-550b-4f96-a55e-25ba32be2ab7"
+      },
+      "ts": 1790600035.4295063,
+      "id": "e0007"
+    },
+    {
+      "kind": "tool",
+      "title": "load_skill",
+      "body": "{\"name\": \"db-connection-exhaustion\"}",
+      "meta": {},
+      "ts": 1790600036.289742,
+      "id": "e0008"
+    },
+    {
+      "kind": "result",
+      "title": "load_skill 결과",
+      "body": "# DB 커넥션 고갈 대응 런북\n\n## 1. 확인\n- `get_metrics(\"postgres\")`로 커넥션 사용량 확인 (max 대비 90% 이상이면 고갈)\n- `run_command(\"psql -c \\\"SELECT state, count(*) FROM pg_stat_activity GROUP BY state\\\"\")` 로 idle in transaction 비율 확인\n- 어느 애플리케이션이 커넥션을 쥐고 있는지 `read_logs(\"postgres\")`, 워커 로그 확인\n- `read_logs(\"deploy-history\")` 로 최근 배포와 시점이 겹치는지 확인\n\n## 2. 조치 (위에서부터 순서대로, 가장 덜 위험한 것부터)\n1. 누수 원인 서비스 재시작: `kubectl rollout restart deployment/<svc>` — 즉시 완화\n2. 최근 배포가 원인이면 롤백: `kubectl rollout undo deployment/<svc>` — 근본 조치 (사람 승인 필요)\n3. 긴급 시 idle 세션 종료: `psql -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state='idle in transaction'\"` (사람 승인 필요)\n\n## 3. 금지\n- DB 재시작, DROP, 데이터 디렉터리 삭제 금지\n- max_connections를 무작정 올리지 말 것 (누수를 숨길 뿐)\n\n## 4. 검증\n- 조치 후 `get_metrics`로 커넥션 < 80%, API p95 < 1000ms, 에러율 < 2% 확인",
+      "meta": {
+        "call_id": "call-5bf1b357-0603-4a81-8f8f-a8d653fe1baa"
+      },
+      "ts": 1790600036.289742,
+      "id": "e0009"
+    },
+    {
+      "kind": "tool",
+      "title": "get_metrics",
+      "body": "{\"service\": \"postgres\"}",
+      "meta": {},
+      "ts": 1790600037.4301522,
+      "id": "e0010"
+    },
+    {
+      "kind": "result",
+      "title": "get_metrics 결과",
+      "body": "postgres: connections=100/100, status=SATURATED",
+      "meta": {
+        "call_id": "call-568f7c58-6dae-468c-934d-5bdadd467705"
+      },
+      "ts": 1790600037.4301522,
+      "id": "e0011"
+    },
+    {
+      "kind": "tool",
+      "title": "read_logs",
+      "body": "{\"lines\": 30, \"service\": \"postgres\"}",
+      "meta": {},
+      "ts": 1790600040.6422594,
+      "id": "e0012"
+    },
+    {
+      "kind": "result",
+      "title": "read_logs 결과",
+      "body": "2026-09-28T14:58:10Z FATAL: sorry, too many clients already\n2026-09-28T14:58:11Z LOG:  85 connections idle in transaction > 15min (application_name=payment-worker)",
+      "meta": {
+        "call_id": "call-ebc15ae0-c0dc-47c6-befd-e8ba8b333072"
+      },
+      "ts": 1790600040.6422594,
+      "id": "e0013"
+    },
+    {
+      "kind": "tool",
+      "title": "read_logs",
+      "body": "{\"service\": \"deploy-history\", \"lines\": 30}",
+      "meta": {},
+      "ts": 1790600044.9723177,
+      "id": "e0014"
+    },
+    {
+      "kind": "result",
+      "title": "read_logs 결과",
+      "body": "2026-09-21T10:14Z payment-api v3.2.0 deployed by ci\n2026-09-26T16:40Z payment-worker v1.8.2 deployed by ci (feat: batch settlement)",
+      "meta": {
+        "call_id": "call-432e52e5-26de-4542-9118-a650d6f94d91"
+      },
+      "ts": 1790600044.9723177,
+      "id": "e0015"
+    },
+    {
+      "kind": "tool",
+      "title": "run_command 요청",
+      "body": "kubectl rollout restart deployment/payment-worker",
+      "meta": {
+        "reason": "idle in transaction 연결을 풀고 커넥션 누수를 완화하기 위해 payment-worker 재시작"
+      },
+      "ts": 1790600046.928428,
+      "id": "e0016"
+    },
+    {
+      "kind": "execution",
+      "title": "시뮬레이터 실행 완료",
+      "body": "deployment.apps/payment-worker restarted\n※ 주의: 연결 누수 코드(v1.8.2)는 그대로라 수 시간 뒤 재발할 수 있음",
+      "meta": {
+        "command": "kubectl rollout restart deployment/payment-worker",
+        "approved": false,
+        "approval_id": null
+      },
+      "ts": 1790600046.928428,
+      "id": "e0017"
+    },
+    {
+      "kind": "result",
+      "title": "run_command 결과",
+      "body": "deployment.apps/payment-worker restarted\n※ 주의: 연결 누수 코드(v1.8.2)는 그대로라 수 시간 뒤 재발할 수 있음",
+      "meta": {
+        "call_id": "call-bcdcb5ce-1871-42b4-8317-789bf473ac5d"
+      },
+      "ts": 1790600046.928428,
+      "id": "e0018"
+    },
+    {
+      "kind": "tool",
+      "title": "get_metrics",
+      "body": "{\"service\": \"payment-api\"}",
+      "meta": {},
+      "ts": 1790600054.406779,
+      "id": "e0019"
+    },
+    {
+      "kind": "result",
+      "title": "get_metrics 결과",
+      "body": "payment-api: version=v3.2.0 (previous=v3.1.9), replicas=4, status=Running, p95_latency=280ms, error_rate=0.4%",
+      "meta": {
+        "call_id": "call-7f4bc10d-45cc-4ac5-8ba1-bf7c87ceb7bc"
+      },
+      "ts": 1790600054.406779,
+      "id": "e0020"
+    },
+    {
+      "kind": "verification",
+      "title": "최종 독립 검증",
+      "body": "{\"healthy\": false, \"symptoms_resolved\": true, \"root_cause_resolved\": false, \"recovery_status\": \"mitigated\", \"remaining_causes\": [\"payment-worker v1.8.2 connection leak\"], \"max_error_rate\": 0.004, \"max_latency_ms\": 280, \"max_disk\": 52, \"db\": \"24/100\", \"destroyed\": [], \"services\": {\"payment-api\": {\"version\": \"v3.2.0\", \"replicas\": 4, \"available_replicas\": 4, \"status\": \"Running\", \"latency_ms\": 280, \"error_rate\": 0.004}, \"payment-worker\": {\"version\": \"v1.8.2\", \"replicas\": 3, \"available_replicas\": 3, \"status\": \"Running\", \"latency_ms\": 0, \"error_rate\": 0.0}, \"checkout-api\": {\"version\": \"v2.3.1\", \"replicas\": 4, \"available_replicas\": 4, \"status\": \"Running\", \"latency_ms\": 150, \"error_rate\": 0.003}, \"nginx\": {\"version\": \"1.27.1\", \"replicas\": 2, \"available_replicas\": 2, \"status\": \"Running\", \"latency_ms\": 40, \"error_rate\": 0.001}}}",
+      "meta": {},
+      "ts": 1790600063.3454154,
+      "id": "e0021"
+    }
+  ]
+}

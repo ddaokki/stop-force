@@ -1,0 +1,129 @@
+{
+  "generated_at_utc": "2026-09-28T13:01:09.428321+00:00",
+  "platform": "Windows",
+  "python": "3.12.9",
+  "packages": {
+    "openai": "3.19.2",
+    "streamlit": "1.64.0",
+    "PyYAML": "6.0.3",
+    "python-dotenv": "1.2.3"
+  },
+  "checks": [
+    {
+      "command": "python -m unittest discover -s tests -v",
+      "exit_code": 0,
+      "test_methods": 39,
+      "duration_seconds": 3.864,
+      "ui_matrix_cases": 9
+    },
+    {
+      "command": "python evaluate.py",
+      "exit_code": 0
+    },
+    {
+      "command": "python baseline_repro.py",
+      "exit_code": 0
+    },
+    {
+      "command": "python -m pip check",
+      "exit_code": 0
+    }
+  ],
+  "source_hash_algorithm": "SHA256 of UTF-8 source bytes normalized to LF",
+  "source_hashes": {
+    "app.py": "46ca7c6035f65e40b7ae4bf6a504bb9356d522ce45f984aa7fe90c7e4e17c944",
+    "baseline_repro.py": "87fab1553e344d7b06747e3bdea3f3987dd3ba17daf7815f8f789d2792219a01",
+    "cli.py": "867b7b1553f5eb6622423467159b31d1e1e0a39ac2039bb2db54760c134f67d7",
+    "evaluate.py": "b67aa2adb3279783638490c12792523b289c0c6acbfb747a50e66d5704a8a4b1",
+    "policy.yaml": "5dc5d6b023eeb1e5b6e3526b951ba78c6d47b980cb1b6edf5f5caa943910fff7",
+    "requirements.txt": "c476b5b9c23659898a33194c6d201101bb98e892294e40879cb14eb56d1c77ee",
+    "skills/bad-deploy-rollback/SKILL.md": "3f09b267cd7eb0e7e90f6e669cd69c0cef40179169a8765dbdb79f6086f498b1",
+    "skills/db-connection-exhaustion/SKILL.md": "a0e84051bc977d6c24fa1574a19619ba47a53c3dcb2f01f58c642484573a89d9",
+    "skills/disk-full-cleanup/SKILL.md": "67ec6c575717113983d2c29e00849b6f56f28a12559231ca0be11cf8238c1c6f",
+    "stopforce/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stopforce/agent.py": "20d857d16fe225fa1d6e57a20ac2e7646ba024864ed18d244a03f82d80de4673",
+    "stopforce/cluster.py": "a514c451845c9b3b56d9dab4fc7b866b859db5816e2de9a7f6e5ecc3a62fc13d",
+    "stopforce/commands.py": "080b7cbee1a9e96fca48e18325a03d51506198458c7c2d982007d1b795fc0cba",
+    "stopforce/llm.py": "9a4a469ebf0b6547ae80ac006ffa42a52f5d2e84b8faf1c89244934e2df1b9e7",
+    "stopforce/policy.py": "12ca1d70bd0e8369d9edc27b5342c844d8bd720611d1ef2031952d8ba04f01f7",
+    "stopforce/reporting.py": "7ecb78610882faef9d40c5f38f184397ed01e8885274c42c7853b617281a1f7c",
+    "stopforce/skills.py": "4f8bb5c1bafa0454341c2b111579a666cac876346b2d5b7fdc3a3819d916307e",
+    "tests/test_agent.py": "063b0267530f06b0bbb9b2aded7aadd548abf95fec49a03fccb3151a220374de",
+    "tests/test_evaluate.py": "83b0ae409bcda1d63aa78ae93a27f2d8f235c896ff9f78362dc19241beee40f3",
+    "tests/test_llm.py": "e1810d55f86852b749feef62a0a0105fa09b885cf51b39cd7d8b7fa97108ca8e",
+    "tests/test_policy_cluster.py": "ae2bfd0cc1d12139b092169b69f427e2e7fadff56b5c8b95b3309de7b169da02",
+    "tests/test_ui.py": "29f1919e76df7180fc66d7ba939a57efb7154737f83a0a3381a0453a0de52802"
+  },
+  "api_sdk_defaults_observed": {
+    "timeout_read_seconds": 600,
+    "max_retries": 2
+  },
+  "app_overrides": {
+    "request_timeout_seconds": 60,
+    "sdk_retries": 0,
+    "application_retries": 2,
+    "whole_run_seconds": 300,
+    "wall_deadline_enforced": true
+  },
+  "unverified": [
+    "macOS execution",
+    "Linux execution",
+    "competition form submission"
+  ],
+  "browser_validation": {
+    "db_approval_and_json_download": "passed",
+    "screenshots": [
+      "screenshots/approval.png",
+      "screenshots/report.png"
+    ]
+  },
+  "validated_code_commit": "18e652f23419e88cb4c71f8f3bb8c3e854c62475",
+  "live_nvidia_runs": [
+    {
+      "trace": "nvidia-live-db.json",
+      "scenario": "db_leak",
+      "recovery_status": "mitigated",
+      "termination": "finish",
+      "request_timeout_seconds": 30,
+      "api_calls": 10,
+      "usage_responses": 10,
+      "known_total_tokens": 23612,
+      "elapsed_seconds": 30.938
+    },
+    {
+      "trace": "nvidia-live-approved.json",
+      "scenario": "bad_deploy",
+      "recovery_status": "unresolved",
+      "termination": "timeout",
+      "request_timeout_seconds": 30,
+      "api_calls": 4,
+      "usage_responses": 3,
+      "known_total_tokens": 4736,
+      "elapsed_seconds": 45.171
+    },
+    {
+      "trace": "nvidia-live-denied.json",
+      "scenario": "bad_deploy",
+      "recovery_status": "unresolved",
+      "termination": "finish",
+      "request_timeout_seconds": 30,
+      "api_calls": 11,
+      "usage_responses": 11,
+      "known_total_tokens": 25089,
+      "elapsed_seconds": 26.313
+    },
+    {
+      "trace": "nvidia-live-approved-retry.json",
+      "scenario": "bad_deploy",
+      "recovery_status": "recovered",
+      "termination": "finish",
+      "request_timeout_seconds": 60,
+      "api_calls": 8,
+      "usage_responses": 8,
+      "known_total_tokens": 16524,
+      "elapsed_seconds": 91.89
+    }
+  ],
+  "total_live_api_attempts_including_probe": 34,
+  "known_total_tokens_including_probe": 70497
+}

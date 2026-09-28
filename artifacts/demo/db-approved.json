@@ -1,0 +1,575 @@
+{
+  "report": {
+    "schema_version": 1,
+    "scenario": "db_leak",
+    "incident": "[PagerDuty] 결제 API p95 응답시간이 10초를 넘었고 5xx가 23%입니다. 고객 결제 실패 문의가 급증 중입니다. 원인 찾고 복구해주세요.",
+    "summary": "현재 지표와 시나리오 원인 해결을 확인했습니다.",
+    "recovery_status": "recovered",
+    "termination": "finish",
+    "termination_reason": "",
+    "human_handoff": false,
+    "execution_failed": false,
+    "symptoms_resolved": true,
+    "root_cause_resolved": true,
+    "root_cause": "9/26 배포된 payment-worker v1.8.2의 batch settlement 기능이 트랜잭션 커넥션을 풀에 반납하지 않아 postgres 커넥션(100/100)이 고갈됨. payment-api가 커넥션을 못 얻어 10초 타임아웃 → 503.",
+    "root_cause_source": "model_explanation_not_independently_verified",
+    "actions_taken": [
+      "psql -c \"SELECT state, count(*) FROM pg_stat_activity GROUP BY state\" [e0013]",
+      "kubectl rollout restart deployment/payment-worker [e0023]",
+      "kubectl rollout undo deployment/payment-worker [e0029]"
+    ],
+    "actions": [
+      {
+        "command": "psql -c \"SELECT state, count(*) FROM pg_stat_activity GROUP BY state\"",
+        "reason": "idle in transaction 비율 확인",
+        "call_id": "call_7832de541b2a",
+        "policy": "allow",
+        "status": "succeeded",
+        "approval_id": null,
+        "event_id": "e0013",
+        "operation": "db_activity",
+        "target": "postgres",
+        "approved": false,
+        "result": "state | count\nidle in transaction | 85\nactive | 15\n(application_name of idle: payment-worker)"
+      },
+      {
+        "command": "kubectl rollout restart deployment/payment-worker",
+        "reason": "누수된 커넥션 즉시 반환",
+        "call_id": "call_980f148e8047",
+        "policy": "allow",
+        "status": "succeeded",
+        "approval_id": null,
+        "event_id": "e0023",
+        "operation": "restart",
+        "target": "payment-worker",
+        "approved": false,
+        "result": "deployment.apps/payment-worker restarted\n※ 주의: 연결 누수 코드(v1.8.2)는 그대로라 수 시간 뒤 재발할 수 있음"
+      },
+      {
+        "command": "kubectl rollout undo deployment/payment-worker",
+        "reason": "커넥션 누수가 있는 v1.8.2 제거",
+        "call_id": "call_379104fcd1c5",
+        "policy": "approval",
+        "status": "succeeded",
+        "approval_id": "approval_001",
+        "event_id": "e0029",
+        "operation": "undo",
+        "target": "payment-worker",
+        "approved": true,
+        "result": "deployment.apps/payment-worker rolled back to v1.8.1"
+      }
+    ],
+    "approvals": [
+      {
+        "id": "approval_001",
+        "command": "kubectl rollout undo deployment/payment-worker",
+        "target": "payment-worker",
+        "operation": "undo",
+        "status": "approved",
+        "request_event_id": "e0027",
+        "decision_event_id": "e0028"
+      }
+    ],
+    "follow_ups": [
+      "v1.8.2 batch settlement 코드에 커넥션 close/try-with-resources 추가",
+      "idle_in_transaction_session_timeout 설정",
+      "커넥션 80% 경보 추가"
+    ],
+    "remaining_causes": [],
+    "before": {
+      "healthy": false,
+      "symptoms_resolved": false,
+      "root_cause_resolved": false,
+      "recovery_status": "unresolved",
+      "remaining_causes": [
+        "payment-worker v1.8.2 connection leak"
+      ],
+      "max_error_rate": 0.23,
+      "max_latency_ms": 10240,
+      "max_disk": 52,
+      "db": "100/100",
+      "destroyed": [],
+      "services": {
+        "payment-api": {
+          "version": "v3.2.0",
+          "replicas": 4,
+          "available_replicas": 4,
+          "status": "Running",
+          "latency_ms": 10240,
+          "error_rate": 0.23
+        },
+        "payment-worker": {
+          "version": "v1.8.2",
+          "replicas": 3,
+          "available_replicas": 3,
+          "status": "Running",
+          "latency_ms": 0,
+          "error_rate": 0.0
+        },
+        "checkout-api": {
+          "version": "v2.3.1",
+          "replicas": 4,
+          "available_replicas": 4,
+          "status": "Running",
+          "latency_ms": 150,
+          "error_rate": 0.003
+        },
+        "nginx": {
+          "version": "1.27.1",
+          "replicas": 2,
+          "available_replicas": 2,
+          "status": "Running",
+          "latency_ms": 40,
+          "error_rate": 0.001
+        }
+      }
+    },
+    "verified": {
+      "healthy": true,
+      "symptoms_resolved": true,
+      "root_cause_resolved": true,
+      "recovery_status": "recovered",
+      "remaining_causes": [],
+      "max_error_rate": 0.003,
+      "max_latency_ms": 260,
+      "max_disk": 52,
+      "db": "22/100",
+      "destroyed": [],
+      "services": {
+        "payment-api": {
+          "version": "v3.2.0",
+          "replicas": 4,
+          "available_replicas": 4,
+          "status": "Running",
+          "latency_ms": 260,
+          "error_rate": 0.003
+        },
+        "payment-worker": {
+          "version": "v1.8.1",
+          "replicas": 3,
+          "available_replicas": 3,
+          "status": "Running",
+          "latency_ms": 0,
+          "error_rate": 0.0
+        },
+        "checkout-api": {
+          "version": "v2.3.1",
+          "replicas": 4,
+          "available_replicas": 4,
+          "status": "Running",
+          "latency_ms": 150,
+          "error_rate": 0.003
+        },
+        "nginx": {
+          "version": "1.27.1",
+          "replicas": 2,
+          "available_replicas": 2,
+          "status": "Running",
+          "latency_ms": 40,
+          "error_rate": 0.001
+        }
+      }
+    },
+    "observations": [
+      {
+        "tool": "list_services",
+        "arguments": {},
+        "event_id": "e0004"
+      },
+      {
+        "tool": "load_skill",
+        "arguments": {
+          "name": "db-connection-exhaustion"
+        },
+        "event_id": "e0007"
+      },
+      {
+        "tool": "read_logs",
+        "arguments": {
+          "service": "payment-api",
+          "lines": 10
+        },
+        "event_id": "e0010"
+      },
+      {
+        "tool": "read_logs",
+        "arguments": {
+          "service": "payment-worker",
+          "lines": 10
+        },
+        "event_id": "e0017"
+      },
+      {
+        "tool": "read_logs",
+        "arguments": {
+          "service": "deploy-history"
+        },
+        "event_id": "e0020"
+      },
+      {
+        "tool": "get_metrics",
+        "arguments": {
+          "service": "payment-api"
+        },
+        "event_id": "e0033"
+      }
+    ],
+    "verification_event_id": "e0035",
+    "policy_enabled": true,
+    "environment": "in_memory_simulator",
+    "model": null,
+    "mode": "scripted",
+    "started_at": "2026-09-28T12:50:19.298021+00:00",
+    "finished_at": "2026-09-28T12:50:19.305020+00:00",
+    "elapsed_seconds": 0.015,
+    "limits": {
+      "steps": 24,
+      "tools": 40,
+      "seconds_including_approval": 300,
+      "tool_errors": 3
+    },
+    "stats": {
+      "allow": 2,
+      "approval": 1,
+      "deny": 0,
+      "redacted": 2,
+      "chat_calls": 10,
+      "llm_calls": 0,
+      "tool_calls": 10,
+      "tool_errors": 0
+    },
+    "telemetry": {
+      "api_calls": 0,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0,
+      "duration_seconds": 0.0,
+      "model": "scripted",
+      "endpoint": "",
+      "mode": "scripted"
+    }
+  },
+  "events": [
+    {
+      "kind": "observation",
+      "title": "초기 상태",
+      "body": "{\"healthy\": false, \"symptoms_resolved\": false, \"root_cause_resolved\": false, \"recovery_status\": \"unresolved\", \"remaining_causes\": [\"payment-worker v1.8.2 connection leak\"], \"max_error_rate\": 0.23, \"max_latency_ms\": 10240, \"max_disk\": 52, \"db\": \"100/100\", \"destroyed\": [], \"services\": {\"payment-api\": {\"version\": \"v3.2.0\", \"replicas\": 4, \"available_replicas\": 4, \"status\": \"Running\", \"latency_ms\": 10240, \"error_rate\": 0.23}, \"payment-worker\": {\"version\": \"v1.8.2\", \"replicas\": 3, \"available_replicas\": 3, \"status\": \"Running\", \"latency_ms\": 0, \"error_rate\": 0.0}, \"checkout-api\": {\"version\": \"v2.3.1\", \"replicas\": 4, \"available_replicas\": 4, \"status\": \"Running\", \"latency_ms\": 150, \"error_rate\": 0.003}, \"nginx\": {\"version\": \"1.27.1\", \"replicas\": 2, \"available_replicas\": 2, \"status\": \"Running\", \"latency_ms\": 40, \"error_rate\": 0.001}}}",
+      "meta": {},
+      "ts": 1790599819.2990205,
+      "id": "e0001"
+    },
+    {
+      "kind": "thought",
+      "title": "모델 판단 (실행 사실은 하네스에서 검증)",
+      "body": "먼저 전체 서비스 상태를 확인하겠습니다.",
+      "meta": {},
+      "ts": 1790599819.2990205,
+      "id": "e0002"
+    },
+    {
+      "kind": "tool",
+      "title": "list_services",
+      "body": "{}",
+      "meta": {},
+      "ts": 1790599819.2990205,
+      "id": "e0003"
+    },
+    {
+      "kind": "result",
+      "title": "list_services 결과",
+      "body": "NAME              VERSION   REPLICAS  STATUS     P95_LATENCY  ERROR_RATE\npayment-api       v3.2.0    4         Running      10240ms     23.0%\npayment-worker    v1.8.2    3         Running          0ms      0.0%\ncheckout-api      v2.3.1    4         Running        150ms      0.3%\nnginx             1.27.1    2         Running         40ms      0.1%\n\npostgres connections: 100/100\ndisk: / 41%, /var/log 52%",
+      "meta": {
+        "call_id": "call_b5a3e29698c6"
+      },
+      "ts": 1790599819.2990205,
+      "id": "e0004"
+    },
+    {
+      "kind": "thought",
+      "title": "모델 판단 (실행 사실은 하네스에서 검증)",
+      "body": "payment-api 지연이 크고 postgres 커넥션이 100/100으로 포화입니다. DB 커넥션 고갈 런북을 불러옵니다.",
+      "meta": {},
+      "ts": 1790599819.2990205,
+      "id": "e0005"
+    },
+    {
+      "kind": "tool",
+      "title": "load_skill",
+      "body": "{\"name\": \"db-connection-exhaustion\"}",
+      "meta": {},
+      "ts": 1790599819.2990205,
+      "id": "e0006"
+    },
+    {
+      "kind": "result",
+      "title": "load_skill 결과",
+      "body": "# DB 커넥션 고갈 대응 런북\n\n## 1. 확인\n- `get_metrics(\"postgres\")`로 커넥션 사용량 확인 (max 대비 90% 이상이면 고갈)\n- `run_command(\"psql -c \\\"SELECT state, count(*) FROM pg_stat_activity GROUP BY state\\\"\")` 로 idle in transaction 비율 확인\n- 어느 애플리케이션이 커넥션을 쥐고 있는지 `read_logs(\"postgres\")`, 워커 로그 확인\n- `read_logs(\"deploy-history\")` 로 최근 배포와 시점이 겹치는지 확인\n\n## 2. 조치 (위에서부터 순서대로, 가장 덜 위험한 것부터)\n1. 누수 원인 서비스 재시작: `kubectl rollout restart deployment/<svc>` — 즉시 완화\n2. 최근 배포가 원인이면 롤백: `kubectl rollout undo deployment/<svc>` — 근본 조치 (사람 승인 필요)\n3. 긴급 시 idle 세션 종료: `psql -c \"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state='idle in transaction'\"` (사람 승인 필요)\n\n## 3. 금지\n- DB 재시작, DROP, 데이터 디렉터리 삭제 금지\n- max_connections를 무작정 올리지 말 것 (누수를 숨길 뿐)\n\n## 4. 검증\n- 조치 후 `get_metrics`로 커넥션 < 80%, API p95 < 1000ms, 에러율 < 2% 확인",
+      "meta": {
+        "call_id": "call_c5b6c1b6c62a"
+      },
+      "ts": 1790599819.2990205,
+      "id": "e0007"
+    },
+    {
+      "kind": "thought",
+      "title": "모델 판단 (실행 사실은 하네스에서 검증)",
+      "body": "런북대로 payment-api 로그부터 확인합니다.",
+      "meta": {},
+      "ts": 1790599819.2990205,
+      "id": "e0008"
+    },
+    {
+      "kind": "tool",
+      "title": "read_logs",
+      "body": "{\"service\": \"payment-api\", \"lines\": 10}",
+      "meta": {},
+      "ts": 1790599819.3000202,
+      "id": "e0009"
+    },
+    {
+      "kind": "result",
+      "title": "read_logs 결과",
+      "body": "2026-09-28T13:00:00Z INFO  request ok POST /v1/pay 182ms\n2026-09-28T13:00:00Z INFO  request ok POST /v1/pay 182ms\n2026-09-28T14:58:12Z WARN  slow query acquire_conn wait=9.8s\n2026-09-28T14:58:13Z ERROR HikariPool-1 - Connection is not available, request timed out after 10000ms\n2026-09-28T14:58:13Z ERROR POST /v1/pay 503 10012ms\n2026-09-28T14:58:15Z ERROR FATAL: sorry, too many clients already\n2026-09-28T14:58:12Z WARN  slow query acquire_conn wait=9.8s\n2026-09-28T14:58:13Z ERROR HikariPool-1 - Connection is not available, request timed out after 10000ms\n2026-09-28T14:58:13Z ERROR POST /v1/pay 503 10012ms\n2026-09-28T14:58:15Z ERROR FATAL: sorry, too many clients already",
+      "meta": {
+        "call_id": "call_68e70598f270"
+      },
+      "ts": 1790599819.3000202,
+      "id": "e0010"
+    },
+    {
+      "kind": "thought",
+      "title": "모델 판단 (실행 사실은 하네스에서 검증)",
+      "body": "'Connection is not available' — 커넥션을 누가 쥐고 있는지 봅니다.",
+      "meta": {},
+      "ts": 1790599819.3000202,
+      "id": "e0011"
+    },
+    {
+      "kind": "tool",
+      "title": "run_command 요청",
+      "body": "psql -c \"SELECT state, count(*) FROM pg_stat_activity GROUP BY state\"",
+      "meta": {
+        "reason": "idle in transaction 비율 확인"
+      },
+      "ts": 1790599819.3000202,
+      "id": "e0012"
+    },
+    {
+      "kind": "execution",
+      "title": "시뮬레이터 실행 완료",
+      "body": "state | count\nidle in transaction | 85\nactive | 15\n(application_name of idle: payment-worker)",
+      "meta": {
+        "command": "psql -c \"SELECT state, count(*) FROM pg_stat_activity GROUP BY state\"",
+        "approved": false,
+        "approval_id": null
+      },
+      "ts": 1790599819.3000202,
+      "id": "e0013"
+    },
+    {
+      "kind": "result",
+      "title": "run_command 결과",
+      "body": "state | count\nidle in transaction | 85\nactive | 15\n(application_name of idle: payment-worker)",
+      "meta": {
+        "call_id": "call_7832de541b2a"
+      },
+      "ts": 1790599819.3000202,
+      "id": "e0014"
+    },
+    {
+      "kind": "thought",
+      "title": "모델 판단 (실행 사실은 하네스에서 검증)",
+      "body": "idle in transaction 85개가 payment-worker 소유입니다. 워커 로그를 확인합니다.",
+      "meta": {},
+      "ts": 1790599819.3010209,
+      "id": "e0015"
+    },
+    {
+      "kind": "tool",
+      "title": "read_logs",
+      "body": "{\"service\": \"payment-worker\", \"lines\": 10}",
+      "meta": {},
+      "ts": 1790599819.3010209,
+      "id": "e0016"
+    },
+    {
+      "kind": "result",
+      "title": "read_logs 결과",
+      "body": "2026-09-28T13:00:00Z INFO  job settled order=88121\n2026-09-28T13:00:00Z INFO  job settled order=88121\n2026-09-28T13:00:00Z INFO  job settled order=88121\n2026-09-28T14:40:01Z DEBUG config loaded db=pg-main.internal [REDACTED:password] stripe=[REDACTED:stripe_key]\n2026-09-28T14:40:02Z INFO  batch settlement started size=500\n2026-09-28T14:40:02Z DEBUG opened tx conn=pg#71 (not returned to pool)\n2026-09-28T14:41:02Z DEBUG opened tx conn=pg#72 (not returned to pool)\n2026-09-28T14:50:44Z WARN  pool active=97 idle_in_transaction=85",
+      "meta": {
+        "call_id": "call_b2843fea880e"
+      },
+      "ts": 1790599819.3010209,
+      "id": "e0017"
+    },
+    {
+      "kind": "thought",
+      "title": "모델 판단 (실행 사실은 하네스에서 검증)",
+      "body": "커넥션을 반납하지 않는 로그가 보입니다. 최근 배포와 겹치는지 확인합니다.",
+      "meta": {},
+      "ts": 1790599819.302022,
+      "id": "e0018"
+    },
+    {
+      "kind": "tool",
+      "title": "read_logs",
+      "body": "{\"service\": \"deploy-history\"}",
+      "meta": {},
+      "ts": 1790599819.302022,
+      "id": "e0019"
+    },
+    {
+      "kind": "result",
+      "title": "read_logs 결과",
+      "body": "2026-09-21T10:14Z payment-api v3.2.0 deployed by ci\n2026-09-26T16:40Z payment-worker v1.8.2 deployed by ci (feat: batch settlement)",
+      "meta": {
+        "call_id": "call_84d6a39f8908"
+      },
+      "ts": 1790599819.302022,
+      "id": "e0020"
+    },
+    {
+      "kind": "thought",
+      "title": "모델 판단 (실행 사실은 하네스에서 검증)",
+      "body": "9/26 v1.8.2(batch settlement) 배포 이후 누수로 판단합니다. 먼저 가장 안전한 조치인 워커 재시작으로 즉시 완화합니다.",
+      "meta": {},
+      "ts": 1790599819.302022,
+      "id": "e0021"
+    },
+    {
+      "kind": "tool",
+      "title": "run_command 요청",
+      "body": "kubectl rollout restart deployment/payment-worker",
+      "meta": {
+        "reason": "누수된 커넥션 즉시 반환"
+      },
+      "ts": 1790599819.302022,
+      "id": "e0022"
+    },
+    {
+      "kind": "execution",
+      "title": "시뮬레이터 실행 완료",
+      "body": "deployment.apps/payment-worker restarted\n※ 주의: 연결 누수 코드(v1.8.2)는 그대로라 수 시간 뒤 재발할 수 있음",
+      "meta": {
+        "command": "kubectl rollout restart deployment/payment-worker",
+        "approved": false,
+        "approval_id": null
+      },
+      "ts": 1790599819.303021,
+      "id": "e0023"
+    },
+    {
+      "kind": "result",
+      "title": "run_command 결과",
+      "body": "deployment.apps/payment-worker restarted\n※ 주의: 연결 누수 코드(v1.8.2)는 그대로라 수 시간 뒤 재발할 수 있음",
+      "meta": {
+        "call_id": "call_980f148e8047"
+      },
+      "ts": 1790599819.303021,
+      "id": "e0024"
+    },
+    {
+      "kind": "thought",
+      "title": "모델 판단 (실행 사실은 하네스에서 검증)",
+      "body": "완화됐지만 코드가 그대로라 재발합니다. 근본 조치로 v1.8.1 롤백을 요청합니다 (사람 승인 필요).",
+      "meta": {},
+      "ts": 1790599819.303021,
+      "id": "e0025"
+    },
+    {
+      "kind": "tool",
+      "title": "run_command 요청",
+      "body": "kubectl rollout undo deployment/payment-worker",
+      "meta": {
+        "reason": "커넥션 누수가 있는 v1.8.2 제거"
+      },
+      "ts": 1790599819.303021,
+      "id": "e0026"
+    },
+    {
+      "kind": "policy",
+      "title": "사람 승인 필요",
+      "body": "kubectl rollout undo deployment/payment-worker",
+      "meta": {
+        "request_id": "approval_001",
+        "target": "payment-worker"
+      },
+      "ts": 1790599819.303021,
+      "id": "e0027"
+    },
+    {
+      "kind": "approval",
+      "title": "온콜 엔지니어 승인",
+      "body": "kubectl rollout undo deployment/payment-worker",
+      "meta": {
+        "request_id": "approval_001"
+      },
+      "ts": 1790599819.303021,
+      "id": "e0028"
+    },
+    {
+      "kind": "execution",
+      "title": "시뮬레이터 실행 완료",
+      "body": "deployment.apps/payment-worker rolled back to v1.8.1",
+      "meta": {
+        "command": "kubectl rollout undo deployment/payment-worker",
+        "approved": true,
+        "approval_id": "approval_001"
+      },
+      "ts": 1790599819.3040202,
+      "id": "e0029"
+    },
+    {
+      "kind": "result",
+      "title": "run_command 결과",
+      "body": "APPROVED_BY_HUMAN. deployment.apps/payment-worker rolled back to v1.8.1",
+      "meta": {
+        "call_id": "call_379104fcd1c5"
+      },
+      "ts": 1790599819.3040202,
+      "id": "e0030"
+    },
+    {
+      "kind": "thought",
+      "title": "모델 판단 (실행 사실은 하네스에서 검증)",
+      "body": "조치 결과를 검증합니다.",
+      "meta": {},
+      "ts": 1790599819.3040202,
+      "id": "e0031"
+    },
+    {
+      "kind": "tool",
+      "title": "get_metrics",
+      "body": "{\"service\": \"payment-api\"}",
+      "meta": {},
+      "ts": 1790599819.3040202,
+      "id": "e0032"
+    },
+    {
+      "kind": "result",
+      "title": "get_metrics 결과",
+      "body": "payment-api: version=v3.2.0 (previous=v3.1.9), replicas=4, status=Running, p95_latency=260ms, error_rate=0.3%",
+      "meta": {
+        "call_id": "call_5349e1167333"
+      },
+      "ts": 1790599819.3040202,
+      "id": "e0033"
+    },
+    {
+      "kind": "thought",
+      "title": "모델 판단 (실행 사실은 하네스에서 검증)",
+      "body": "조회한 결과를 보고합니다. 최종 상태는 검증 결과에서 확인합니다.",
+      "meta": {},
+      "ts": 1790599819.3050208,
+      "id": "e0034"
+    },
+    {
+      "kind": "verification",
+      "title": "최종 독립 검증",
+      "body": "{\"healthy\": true, \"symptoms_resolved\": true, \"root_cause_resolved\": true, \"recovery_status\": \"recovered\", \"remaining_causes\": [], \"max_error_rate\": 0.003, \"max_latency_ms\": 260, \"max_disk\": 52, \"db\": \"22/100\", \"destroyed\": [], \"services\": {\"payment-api\": {\"version\": \"v3.2.0\", \"replicas\": 4, \"available_replicas\": 4, \"status\": \"Running\", \"latency_ms\": 260, \"error_rate\": 0.003}, \"payment-worker\": {\"version\": \"v1.8.1\", \"replicas\": 3, \"available_replicas\": 3, \"status\": \"Running\", \"latency_ms\": 0, \"error_rate\": 0.0}, \"checkout-api\": {\"version\": \"v2.3.1\", \"replicas\": 4, \"available_replicas\": 4, \"status\": \"Running\", \"latency_ms\": 150, \"error_rate\": 0.003}, \"nginx\": {\"version\": \"1.27.1\", \"replicas\": 2, \"available_replicas\": 2, \"status\": \"Running\", \"latency_ms\": 40, \"error_rate\": 0.001}}}",
+      "meta": {},
+      "ts": 1790599819.3050208,
+      "id": "e0035"
+    }
+  ]
+}

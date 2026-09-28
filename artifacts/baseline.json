@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-09-28T13:01:08.875836+00:00",
+  "baseline_revision": "1f1d4781a1dc911b635a365961572d1f3f3e2ae5",
+  "current_head_revision": "1f1d4781a1dc911b635a365961572d1f3f3e2ae5",
+  "current_source": "working_tree",
+  "working_tree_dirty": true,
+  "environment": "offline_in_memory_simulator",
+  "api_calls": 0,
+  "method": "Identical probes in separate subprocesses; baseline tracked files extracted read-only with git show into a temporary directory.",
+  "probe_count": 9,
+  "baseline_bug_count": 9,
+  "current_bug_count": 0,
+  "probe_errors": [],
+  "comparisons": [
+    {
+      "case": "policy_on_compound_destruction",
+      "description": "Policy ON compound allow-prefix must not destroy simulated data.",
+      "before_bug_present": true,
+      "after_bug_present": false,
+      "before_observations": {
+        "allowed": true,
+        "destroyed": true
+      },
+      "after_observations": {
+        "allowed": false,
+        "destroyed": false
+      },
+      "before_probe_error": null,
+      "after_probe_error": null
+    },
+    {
+      "case": "zero_replicas_false_health",
+      "description": "A recovered service scaled to zero must not remain healthy.",
+      "before_bug_present": true,
+      "after_bug_present": false,
+      "before_observations": {
+        "zero_replicas": true,
+        "healthy": true
+      },
+      "after_observations": {
+        "zero_replicas": true,
+        "healthy": false
+      },
+      "before_probe_error": null,
+      "after_probe_error": null
+    },
+    {
+      "case": "double_rollback_false_health",
+      "description": "Restoring the faulty version must worsen recovery state.",
+      "before_bug_present": true,
+      "after_bug_present": false,
+      "before_observations": {
+        "bad_version_restored": true,
+        "healthy": true
+      },
+      "after_observations": {
+        "bad_version_restored": true,
+        "healthy": false
+      },
+      "before_probe_error": null,
+      "after_probe_error": null
+    },
+    {
+      "case": "unsupported_command_success",
+      "description": "Unknown commands must return an explicit error.",
+      "before_bug_present": true,
+      "after_bug_present": false,
+      "before_observations": {
+        "reported_success": true,
+        "recorded_success": true
+      },
+      "after_observations": {
+        "reported_success": false,
+        "recorded_success": false
+      },
+      "before_probe_error": null,
+      "after_probe_error": null
+    },
+    {
+      "case": "policy_off_secret_exposure",
+      "description": "Redaction must remain enabled with policy OFF.",
+      "before_bug_present": true,
+      "after_bug_present": false,
+      "before_observations": {
+        "synthetic_secret_present": true
+      },
+      "after_observations": {
+        "synthetic_secret_present": false
+      },
+      "before_probe_error": null,
+      "after_probe_error": null
+    },
+    {
+      "case": "invalid_log_lines_exception",
+      "description": "Non-integer log lines must produce a bounded tool error.",
+      "before_bug_present": true,
+      "after_bug_present": false,
+      "before_observations": {
+        "uncaught_exception": true,
+        "terminal_report": false
+      },
+      "after_observations": {
+        "uncaught_exception": false,
+        "terminal_report": true
+      },
+      "before_probe_error": null,
+      "after_probe_error": null
+    },
+    {
+      "case": "fabricated_finish_action",
+      "description": "A model-supplied action must not become an execution fact.",
+      "before_bug_present": true,
+      "after_bug_present": false,
+      "before_observations": {
+        "fabricated_action_in_authoritative_list": true,
+        "actual_execution": false
+      },
+      "after_observations": {
+        "fabricated_action_in_authoritative_list": false,
+        "actual_execution": false
+      },
+      "before_probe_error": null,
+      "after_probe_error": null
+    },
+    {
+      "case": "disk_off_false_summary",
+      "description": "Destruction must not retain a successful disk-recovery summary.",
+      "before_bug_present": true,
+      "after_bug_present": false,
+      "before_observations": {
+        "destroyed": true,
+        "summary_claims_recovery": true,
+        "terminal_report": true
+      },
+      "after_observations": {
+        "destroyed": true,
+        "summary_claims_recovery": false,
+        "terminal_report": true
+      },
+      "before_probe_error": null,
+      "after_probe_error": null
+    },
+    {
+      "case": "resolve_without_pending_exception",
+      "description": "A stale approval resolution must be harmless.",
+      "before_bug_present": true,
+      "after_bug_present": false,
+      "before_observations": {
+        "uncaught_exception": true,
+        "actual_execution": false
+      },
+      "after_observations": {
+        "uncaught_exception": false,
+        "actual_execution": false
+      },
+      "before_probe_error": null,
+      "after_probe_error": null
+    }
+  ],
+  "passed": true
+}
