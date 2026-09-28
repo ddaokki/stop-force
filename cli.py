@@ -74,7 +74,7 @@ def main():
                 ap.error("보고서 저장 경로는 디렉터리가 아닌 파일이어야 합니다.")
             if any(parent.exists() and not parent.is_dir() for parent in path.parents):
                 ap.error("보고서의 상위 경로에 파일이 있습니다. 저장 폴더를 확인하세요.")
-    except OSError:
+    except (OSError, ValueError, RuntimeError):
         ap.error("보고서 저장 경로를 확인할 수 없습니다. 경로와 접근 권한을 확인하세요.")
 
     if not args.demo and not os.getenv("NVIDIA_API_KEY"):

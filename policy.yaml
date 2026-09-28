@@ -27,7 +27,7 @@ redact:
   - name: aws_key
     pattern: 'AKIA[0-9A-Z]{16}'
   - name: bearer
-    pattern: '(?i)bearer\s+[A-Za-z0-9._-]+'
+    pattern: '(?i)bearer\s+[A-Za-z0-9._~+/-]+=*'
 
   - name: nvidia_key
     pattern: 'nvapi-[A-Za-z0-9_-]+'
