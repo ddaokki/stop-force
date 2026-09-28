@@ -2,7 +2,7 @@ import json
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from stopforce.agent import Agent
 from stopforce.cluster import make_cluster
@@ -410,6 +410,97 @@ class AgentTests(unittest.TestCase):
                     events = {event.id: event for event in agent.events}
                     self.assertTrue(all(events[action["event_id"]].kind == "execution"
                                         for action in report["actions"] if action["status"] == "succeeded"))
+
+    def test_interrupt_at_approval_request_keeps_terminal_report(self):
+        for interrupt in (False, True):
+            with self.subTest(interrupt=interrupt):
+                agent = make_agent(FakeLLM([command("kubectl rollout undo deployment/payment-worker")]))
+
+                def stop(event):
+                    if event.title == "사람 승인 필요":
+                        if interrupt:
+                            raise KeyboardInterrupt
+                        agent.cancel("작업 취소")
+
+                if interrupt:
+                    with self.assertRaises(KeyboardInterrupt):
+                        agent.run(stop)
+                    agent.cancel("터미널 중단")
+                else:
+                    agent.run(stop)
+                self.assertEqual(agent.report["termination"], "cancelled")
+                self.assertEqual(agent.report["actions"], agent.actions)
+                self.assertEqual(agent.report["approvals"], list(agent.approvals.values()))
+                self.assertEqual(agent.report["approvals"][0]["status"], "cancelled")
+                self.assertEqual(agent.report["actions"][0]["status"], "not_executed")
+                self.assertEqual(agent.report["approvals"][0]["closure_event_id"], agent.actions[0]["event_id"])
+                self.assertEqual(agent.cluster.attempted, [])
+                self.assertIsNone(agent.pending)
+                self.assertEqual(agent.queue, [])
+                self.assertFalse(agent.resolve(True))
+
+    def test_cancel_on_result_preserves_evidence_already_recorded(self):
+        for title in ("시뮬레이터 실행 완료", "실행 실패", "read_logs 결과"):
+            with self.subTest(title=title):
+                response = call("read_logs", {"service": "payment-worker"}) if title == "read_logs 결과" else command("df -h")
+                agent = make_agent(FakeLLM([response, call("finish", FINISH)]))
+                if title == "실행 실패":
+                    agent.cluster.execute_result = Mock(side_effect=RuntimeError("test failure"))
+
+                def cancel(event):
+                    if event.title == title:
+                        agent.cancel("작업 취소")
+
+                agent.run(cancel)
+                self.assertEqual(agent.report["termination"], "cancelled")
+                self.assertEqual(agent.report["actions"], agent.actions)
+                self.assertEqual(agent.report["observations"], agent.observations)
+                self.assertEqual(agent.report["stats"]["tool_errors"], agent.stats["tool_errors"])
+                self.assertEqual(agent.stats["chat_calls"], 1)
+                self.assertEqual(agent.events[-1].kind, "final")
+                if agent.actions:
+                    action = agent.report["actions"][0]
+                    event = next(e for e in agent.events if e.id == action["event_id"])
+                    self.assertEqual(event.kind, "execution")
+                    self.assertEqual(action["status"], "failed" if title == "실행 실패" else "succeeded")
+                else:
+                    self.assertEqual(len(agent.report["observations"]), 1)
+
+    def test_report_exists_before_final_notifications_can_interrupt(self):
+        for title in ("실행하지 않음", "최종 독립 검증", "장애 보고서"):
+            with self.subTest(title=title):
+                agent = make_agent(FakeLLM([command("kubectl rollout undo deployment/payment-worker")]))
+                agent.run()
+
+                def interrupt(event):
+                    if event.title == title:
+                        raise KeyboardInterrupt
+
+                agent._on_event = interrupt
+                with self.assertRaises(KeyboardInterrupt):
+                    agent.cancel("터미널 중단")
+                self.assertEqual(agent.report["termination"], "cancelled")
+                self.assertEqual(agent.report["actions"], agent.actions)
+                self.assertEqual(agent.events[-1].kind, "final")
+                self.assertIsNone(agent.pending)
+
+    def test_cancel_during_thought_or_lookup_does_not_resume_work(self):
+        for title in ("모델 판단 (실행 사실은 하네스에서 검증)", "read_logs"):
+            with self.subTest(title=title):
+                response = call("read_logs", {"service": "payment-worker"})
+                response["content"] = "로그를 확인합니다."
+                agent = make_agent(FakeLLM([response, call("finish", FINISH)]))
+
+                def cancel(event):
+                    if event.title == title:
+                        agent.cancel("작업 취소")
+
+                with patch.object(agent.cluster, "read_logs") as read:
+                    agent.run(cancel)
+                read.assert_not_called()
+                self.assertEqual(agent.report["termination"], "cancelled")
+                self.assertEqual(agent.queue, [])
+                self.assertEqual(agent.events[-1].kind, "final")
 
 
 if __name__ == "__main__":

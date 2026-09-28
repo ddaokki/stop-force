@@ -12,7 +12,7 @@ from stopforce.cluster import SCENARIOS, make_cluster
 from stopforce.llm import NvidiaLLM, ScriptedLLM
 from stopforce.policy import Policy
 from stopforce.skills import SkillLibrary
-from stopforce.reporting import report_json, report_markdown
+from stopforce.reporting import report_json, report_markdown, write_report
 
 ROOT = Path(__file__).parent
 load_dotenv(ROOT / ".env")
@@ -35,9 +35,9 @@ def read_approval(agent):
             ready.set()
 
     threading.Thread(target=read, daemon=True).start()
-    if not ready.wait(agent.remaining_seconds):
-        agent.check_deadline()
-        return None
+    while not ready.wait(agent.remaining_seconds):
+        if agent.check_deadline():
+            return None
     if agent.check_deadline():
         return None
     ok, value = result[0]
@@ -116,8 +116,7 @@ def main():
     try:
         for path, content in ((args.json, report_json(agent)), (args.markdown, report_markdown(agent))):
             if path:
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(content, encoding="utf-8")
+                write_report(path, content)
     except OSError:
         print("보고서 저장에 실패했습니다. 저장 경로, 디스크 공간과 쓰기 권한을 확인하세요.", file=sys.stderr)
         return 1

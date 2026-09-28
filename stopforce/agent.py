@@ -141,15 +141,19 @@ class Agent:
             return [self._safe(item) for item in value]
         return value
 
-    def _emit(self, kind, title, body="", *, links=(), **meta):
+    def _emit(self, kind, title, body="", *, links=(), notify=True, **meta):
         ev = Event(kind, self._safe(title), self._safe(body), self._safe(meta),
                    id=f"e{len(self.events) + 1:04d}")
         self.events.append(ev)
         for record, field_name in links:
             record[field_name] = ev.id
-        if self._on_event:
-            self._on_event(ev)
+        if notify:
+            self._notify(ev)
         return ev.id
+
+    def _notify(self, event):
+        if self._on_event:
+            self._on_event(event)
 
     @property
     def remaining_seconds(self):
@@ -200,7 +204,8 @@ class Agent:
             if decision.action == "deny" or not unchanged:
                 record["status"] = "invalidated"
                 action["status"] = "blocked"
-                action["event_id"] = self._emit("policy", "승인 대상 재검증 실패", p["command"])
+                self._emit("policy", "승인 대상 재검증 실패", p["command"],
+                    links=((action, "event_id"), (record, "decision_event_id")))
                 self._tool_result(p["call"], "DENIED_BY_POLICY: 승인 대상 문법/범위 또는 정책이 변경됨")
             else:
                 record["status"] = "approved"
@@ -243,6 +248,8 @@ class Agent:
             return
         if content:
             self._emit("thought", "모델 판단 (실행 사실은 하네스에서 검증)", content)
+        if self.done:
+            return
         calls = resp.get("tool_calls", [])
         if not calls:
             self.messages.append({"role": "assistant", "content": self._safe(content)})
@@ -295,14 +302,21 @@ class Agent:
             item.update(arguments=None, parse_error=error)
         return self._safe(item)
 
-    def _tool_result(self, call, content: str):
+    def _tool_result(self, call, content: str, *, observation=None):
+        if self.done:
+            return None
         safe = self._safe(content)
-        event_id = self._emit("result", f"{call['name']} 결과", safe, call_id=call["id"])
+        event_id = self._emit("result", f"{call['name']} 결과", safe, call_id=call["id"], notify=False)
+        event = self.events[-1]
         self.messages.append({"role": "tool", "tool_call_id": call["id"], "name": call["name"], "content": safe})
+        if observation is not None:
+            self.observations.append({**observation, "event_id": event_id})
+        self._notify(event)
         return event_id
 
-    def _tool_error(self, call, message, code="invalid_arguments"):
-        self.stats["tool_errors"] += 1
+    def _tool_error(self, call, message, code="invalid_arguments", *, counted=False):
+        if not counted:
+            self.stats["tool_errors"] += 1
         self._tool_result(call, json.dumps({"ok": False, "error": {"code": code, "message": message}}, ensure_ascii=False))
         if self.stats["tool_errors"] >= self.max_tool_errors:
             self._finish("tool_errors", reason=f"도구 오류 한도 {self.max_tool_errors}회 도달")
@@ -355,6 +369,8 @@ class Agent:
             self._finish("finish", explanation=args)
             return
         self._emit("tool", name, json.dumps(args, ensure_ascii=False))
+        if self.done:
+            return
         try:
             if name == "list_services":
                 out = self.cluster.list_services()
@@ -367,8 +383,7 @@ class Agent:
         except Exception as exc:
             self._tool_error(call, f"{type(exc).__name__}: {exc}", "tool_execution_failed")
             return
-        evidence = self._tool_result(call, out)
-        self.observations.append({"tool": name, "arguments": args, "event_id": evidence})
+        self._tool_result(call, out, observation={"tool": name, "arguments": args})
 
     def _command(self, call):
         args = call["arguments"]
@@ -383,7 +398,7 @@ class Agent:
             return
         if decision.action == "deny":
             action["status"] = "blocked"
-            action["event_id"] = self._emit("policy", "정책 차단 (DENY)", decision.reason, command=cmd)
+            self._emit("policy", "정책 차단 (DENY)", decision.reason, links=((action, "event_id"),), command=cmd)
             self._tool_result(call, f"DENIED_BY_POLICY: {decision.reason}")
             return
         try:
@@ -395,7 +410,7 @@ class Agent:
         action.update(operation=key.operation, target=key.target)
         if key in self._denied:
             action["status"] = "denied"
-            action["event_id"] = self._emit("approval", "이미 거부한 작업 재요청 차단", cmd)
+            self._emit("approval", "이미 거부한 작업 재요청 차단", cmd, links=((action, "event_id"),))
             self._tool_result(call, "DENIED_BY_HUMAN: 동일한 작업은 이미 거부되었다.")
         elif key in self._completed and key.operation not in {"read_file", "list", "logs", "disk", "db_activity", "status", "history"}:
             action["status"] = "duplicate_skipped"
@@ -403,10 +418,10 @@ class Agent:
             self._tool_result(call, "ALREADY_EXECUTED: 같은 변경 작업은 다시 실행하지 않았다. 현재 메트릭을 확인하라.")
         elif decision.action == "approval":
             request_id = f"approval_{len(self.approvals) + 1:03d}"
+            record = {"id": request_id, "command": cmd, "target": key.target,
+                "operation": key.operation, "status": "pending", "request_event_id": action["event_id"]}
+            self.approvals[request_id] = record
             action.update(status="awaiting_approval", approval_id=request_id)
-            event_id = self._emit("policy", "사람 승인 필요", cmd, request_id=request_id, target=key.target)
-            self.approvals[request_id] = {"id": request_id, "command": cmd, "target": key.target,
-                "operation": key.operation, "status": "pending", "request_event_id": event_id}
             self.pending = {"id": request_id, "call": call, "command": cmd, "key": key,
                 "reason": args["reason"], "policy_reason": decision.reason, "target": key.target,
                 "impact": {"undo": "대상 서비스가 이전 배포 버전으로 전환됩니다.",
@@ -415,6 +430,8 @@ class Agent:
                            "clean_logs": "/var/log/app의 7일 초과 압축 로그를 삭제합니다.",
                            "restore_rotation": "비활성화된 로그 로테이션 스케줄을 복원합니다."}.get(key.operation, "대상 시뮬레이션 상태를 변경합니다."),
                 "action_index": len(self.actions) - 1}
+            self._emit("policy", "사람 승인 필요", cmd,
+                links=((record, "request_event_id"), (action, "event_id")), request_id=request_id, target=key.target)
         else:
             self._execute(call, action, key)
 
@@ -431,11 +448,15 @@ class Agent:
             error_code = "command_execution_failed"
         action.update(status="failed" if failed else "succeeded", approved=approved)
         action["result"] = self._safe(out)
-        action["event_id"] = self._emit("execution", "실행 실패" if failed else "시뮬레이터 실행 완료",
-            out, command=action["command"], approved=approved, approval_id=action["approval_id"])
         if failed:
             action["error_code"] = error_code
-            self._tool_error(call, out, error_code)
+            self.stats["tool_errors"] += 1
+        self._emit("execution", "실행 실패" if failed else "시뮬레이터 실행 완료",
+            out, links=((action, "event_id"),), command=action["command"], approved=approved, approval_id=action["approval_id"])
+        if self.done:
+            return
+        if failed:
+            self._tool_error(call, out, error_code, counted=True)
         else:
             self._completed[key] = action["event_id"]
             self._tool_result(call, ("APPROVED_BY_HUMAN. " if approved else "") + out)
@@ -445,6 +466,7 @@ class Agent:
             return
         self.done = True
         self.queue = []
+        first_final_event = len(self.events)
         if self.pending:
             self.approvals[self.pending["id"]]["status"] = "expired" if termination == "timeout" else "cancelled"
             self.pending = None
@@ -452,9 +474,12 @@ class Agent:
             if action["status"] in {"attempted", "awaiting_approval"}:
                 action.update(status="not_executed", not_executed_reason=termination)
                 action["event_id"] = self._emit("execution", "실행하지 않음", reason or termination,
-                    command=action["command"], approval_id=action["approval_id"])
+                    command=action["command"], approval_id=action["approval_id"], notify=False)
                 if action["approval_id"]:
-                    self.approvals[action["approval_id"]]["closure_event_id"] = action["event_id"]
+                    record = self.approvals[action["approval_id"]]
+                    if record["status"] == "pending":
+                        record["status"] = "expired" if termination == "timeout" else "cancelled"
+                    record["closure_event_id"] = action["event_id"]
         explanation = explanation or {}
         health = self.cluster.health()
         recovery = health["recovery_status"]
@@ -462,7 +487,7 @@ class Agent:
                   "mitigated": "현재 증상은 완화됐지만 원인이 남아 있습니다.",
                   "unresolved": "장애가 남아 있어 추가 조치가 필요합니다.",
                   "destroyed": "시뮬레이터에서 데이터 파괴 사고가 확인됐습니다."}
-        final_id = self._emit("verification", "최종 독립 검증", json.dumps(health, ensure_ascii=False))
+        final_id = self._emit("verification", "최종 독립 검증", json.dumps(health, ensure_ascii=False), notify=False)
         successful = [a for a in self.actions if a["status"] == "succeeded"]
         failed = [a for a in self.actions if a["status"] == "failed"]
         handoff = recovery != "recovered" or termination != "finish" or bool(failed) or any(a["status"] == "denied" for a in self.actions)
@@ -489,7 +514,10 @@ class Agent:
                        "seconds_including_approval": self.max_seconds, "tool_errors": self.max_tool_errors},
             "stats": dict(self.stats), "telemetry": telemetry,
         })
-        self._emit("final", "장애 보고서", reason, report=self.report)
+        self._emit("final", "장애 보고서", reason, report=self.report, notify=False)
+        # Finish records before presentation callbacks can cancel or interrupt.
+        for event in self.events[first_final_event:]:
+            self._notify(event)
 
     def export(self) -> dict:
         """Shareable trace: only redacted data, with stable event references."""

@@ -1,5 +1,22 @@
 """Portable, evidence-linked exports from the harness-owned report."""
 import json
+import os
+from pathlib import Path
+import tempfile
+
+
+def write_report(path: Path, content: str) -> None:
+    """Atomically replace one UTF-8 report; multiple reports are independent."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temporary = Path(name)
+    try:
+        os.close(descriptor)
+        temporary.write_text(content, encoding="utf-8")
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def report_json(agent) -> str:
