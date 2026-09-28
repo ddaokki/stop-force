@@ -95,6 +95,8 @@ JSON과 Markdown 저장 경로는 서로 다른 파일이어야 합니다. 같�
 
 모델은 조회 도구와 `run_command`를 요청합니다. 에이전트는 인자 형식과 호출 한도를 확인하고, 명령 파서는 지원하는 명령 전체가 정확히 일치하는지 검사합니다. 정책은 허용, 승인 필요, 차단으로 판정합니다. 승인 요청은 해당 명령의 실행 기록과 연결됩니다.
 
+각 실행은 별도의 `run_id`를 갖고 승인 요청 ID에도 이를 포함합니다. 웹의 승인, 거부, 중단 버튼도 해당 요청에 묶습니다. 시나리오를 다시 시작한 뒤 이전 실행의 승인 ID를 전달해도 새 작업은 실행하지 않습니다. JSON 보고서의 `run_id`와 승인 기록으로 어느 실행에 대한 결정인지 확인할 수 있습니다.
+
 기본 제한은 API 요청당 60초, 재시도 최대 2회, 내부 chat 24회, 도구 40회, 도구 오류 3회, 전체 300초(승인 대기 포함)입니다. 전송 계층의 inactivity timeout 외에 호출자의 경과 시간도 제한합니다. 기한을 넘긴 응답은 버리고 도구를 실행하지 않습니다. 이미 전송된 요청의 공급자 측 생성까지 취소할 수는 없으며 그 요청의 토큰 사용량은 미확인으로 남습니다. 재시도는 429, 서버 오류, 시간 초과에만 제한적으로 적용하며 도구 실행을 재시도하는 기능이 아닙니다. 네이티브 도구 호출을 명시적으로 지원하지 않는다는 오류에만 JSON 모드로 전환합니다. 잘못된 JSON 인자는 빈 객체로 바꾸지 않고 검증 오류로 전달합니다.
 
 웹 승인 화면은 세션이 연결된 동안 매초 남은 시간을 갱신하고, 기한이 지나면 요청을 만료시켜 보고서를 표시합니다. 승인 대기 중 **실행 중단**을 눌러도 이전 실행 기록은 보존됩니다. 브라우저 연결이 끊기거나 타이머가 지연돼도 승인 시 기한을 다시 검사하므로 만료된 요청은 실행하지 않습니다. CLI 입력 대기도 전체 기한에 종료되며 뒤늦은 승인 입력은 실행으로 이어지지 않습니다.
@@ -127,7 +129,7 @@ JSON에 들어올 수 있는 짝 없는 유니코드 surrogate는 화면 표시�
 
 차단과 거부는 명령 시도 수, 무승인 실행은 성공한 실행 수를 분모로 계산합니다. 비밀값 누출 검사는 평가 코드에 열거한 합성 표식에 한정합니다. 고정 목록 통과를 모든 공격이나 모든 비밀값에 대한 보장으로 해석하지 않습니다. 테스트와 사전 작성 평가의 실제 NVIDIA API 호출 수는 0입니다.
 
-검증 환경: Windows, Python 3.12.9, OpenAI SDK 3.19.2, Streamlit 1.64.0. 최신 자동 테스트 97개(화면 9가지 조합, 웹 설정 오류, 만료/중단, JSON 해석, CLI 저장 실패와 경로 충돌, 호출 ID와 설정, 응답 종료 상태, 유니코드 내보내기 검사 포함), 평가 9개 사례와 고정 명령 20개 조합이 통과했습니다. [최신 검증 범위와 소스 해시](artifacts/web-validation.json)를 제공합니다. [수정 전후 9개 재현 결과](artifacts/baseline.json), [1차 검증](artifacts/validation.json), [2차 검증](artifacts/additional-validation.json), [3차 검증](artifacts/execution-validation.json), [4차 검증](artifacts/protocol-validation.json), [5차 검증](artifacts/input-validation.json), [6차 검증](artifacts/completion-validation.json), [7차 검증](artifacts/shutdown-validation.json), [8차 검증](artifacts/destination-validation.json)은 각 개선 당시의 기록입니다. 추가 개선은 오프라인과 API 대역으로 검증했으며 실제 NVIDIA API를 다시 호출하지 않았습니다. macOS와 Linux에서의 실행은 검증하지 않았습니다.
+검증 환경: Windows, Python 3.12.9, OpenAI SDK 3.19.2, Streamlit 1.64.0. 최신 자동 테스트 99개(화면 9가지 조합, 웹 설정 오류, 실행 간 승인 구분, 만료/중단, JSON 해석, CLI 저장 실패와 경로 충돌, 호출 ID와 설정, 응답 종료 상태, 유니코드 내보내기 검사 포함), 평가 9개 사례와 고정 명령 20개 조합이 통과했습니다. [최신 검증 범위와 소스 해시](artifacts/approval-run-validation.json)를 제공합니다. [수정 전후 9개 재현 결과](artifacts/baseline.json), [1차 검증](artifacts/validation.json), [2차 검증](artifacts/additional-validation.json), [3차 검증](artifacts/execution-validation.json), [4차 검증](artifacts/protocol-validation.json), [5차 검증](artifacts/input-validation.json), [6차 검증](artifacts/completion-validation.json), [7차 검증](artifacts/shutdown-validation.json), [8차 검증](artifacts/destination-validation.json), [9차 검증](artifacts/web-validation.json)은 각 개선 당시의 기록입니다. 추가 개선은 오프라인과 API 대역으로 검증했으며 실제 NVIDIA API를 다시 호출하지 않았습니다. macOS와 Linux에서의 실행은 검증하지 않았습니다.
 
 핵심 기능 회귀 검사에는 장애 진단, 즉시 완화 조치, 승인 전 실행 보류, 승인 시 복구와 거부 시 완화 유지, 최종 상태와 실행 기록의 일치가 포함됩니다. `NvidiaLLM`에 공급자 모의 응답을 넣어 네이티브/JSON 두 방식과 승인/거부 조합도 검사합니다. 이 검사는 연결 코드와 에이전트 사이의 전체 흐름을 확인하며, 실제 모델의 진단 능력이나 네트워크 연결 검사를 대신하지 않습니다.
 

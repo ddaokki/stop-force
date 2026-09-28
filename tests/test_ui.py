@@ -10,6 +10,37 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class UITests(unittest.TestCase):
+    def test_restarting_pending_run_changes_approval_buttons_and_rejects_old_id(self):
+        with patch.dict(os.environ, {"STOPFORCE_DEMO_DELAY": "0", "NVIDIA_API_KEY": ""}):
+            app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=15).run()
+            app.button[0].click().run()
+            previous = app.session_state["agent"]
+            old_id = previous.pending["id"]
+            old_executed = list(previous.cluster.executed)
+            old_keys = {b.key for b in app.button if b.label in {"✅ 승인하고 실행", "⛔ 거부", "🛑 실행 중단"}}
+            self.assertEqual(old_keys, {f"approve_{old_id}", f"deny_{old_id}", f"cancel_{old_id}"})
+            app.selectbox[0].set_value("bad_deploy").run()
+            next(b for b in app.button if b.label == "🚨 에이전트 출동").click().run()
+            self.assertFalse(app.exception)
+            current = app.session_state["agent"]
+            self.assertIsNot(current, previous)
+            self.assertEqual(previous.report["termination"], "cancelled")
+            self.assertEqual(previous.cluster.executed, old_executed)
+            self.assertIsNone(previous.pending)
+            new_id = current.pending["id"]
+            self.assertNotEqual(old_id, new_id)
+            self.assertFalse(old_keys & {b.key for b in app.button})
+            self.assertFalse(current.resolve(True, request_id=old_id))
+            self.assertEqual(current.cluster.executed, [])
+            self.assertEqual(current.pending["id"], new_id)
+            next(b for b in app.button if b.key == f"approve_{new_id}").click().run()
+            self.assertFalse(app.exception)
+            self.assertEqual(current.report["termination"], "finish")
+            self.assertEqual(current.report["recovery_status"], "recovered")
+            self.assertEqual(current.report["run_id"], current.run_id)
+            self.assertEqual(current.report["approvals"][0]["id"], new_id)
+            self.assertEqual(len(app.get("download_button")), 2)
+
     def test_policy_setup_failure_does_not_crash_or_expose_details(self):
         with patch.dict(os.environ, {"STOPFORCE_DEMO_DELAY": "0", "NVIDIA_API_KEY": ""}), \
                 patch("stopforce.policy.Policy", side_effect=ValueError("private-policy-fixture")) as policy:

@@ -160,13 +160,13 @@ def approval_panel(agent):
         st.caption(f"남은 승인 가능 시간: {ceil(agent.remaining_seconds)}초. "
                    f"전체 실행 제한 {agent.max_seconds}초에 승인 대기가 포함됩니다. 실제 서버에는 적용되지 않습니다.")
         b1, b2 = st.columns(2)
-        if b1.button("✅ 승인하고 실행", type="primary", width="stretch"):
+        if b1.button("✅ 승인하고 실행", key=f"approve_{p['id']}", type="primary", width="stretch"):
             st.session_state.update(resolve={"approved": True, "id": p["id"]}, running=True)
             st.rerun()
-        if b2.button("⛔ 거부", width="stretch"):
+        if b2.button("⛔ 거부", key=f"deny_{p['id']}", width="stretch"):
             st.session_state.update(resolve={"approved": False, "id": p["id"]}, running=True)
             st.rerun()
-        if st.button("🛑 실행 중단", width="stretch"):
+        if st.button("🛑 실행 중단", key=f"cancel_{p['id']}", width="stretch"):
             agent.cancel("사용자가 승인 대기 중 실행을 중단함")
             st.session_state.pop("resolve", None)
             st.session_state["running"] = False

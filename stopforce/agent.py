@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import time
+import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 
@@ -106,6 +107,7 @@ class Agent:
         self.steps = self.nudges = 0
         self.max_steps, self.max_tool_calls = max_steps, max_tool_calls
         self.max_seconds, self.max_tool_errors = max_seconds, max_tool_errors
+        self.run_id = uuid.uuid4().hex
         self.started_at = datetime.now(timezone.utc).isoformat()
         self._started = time.monotonic()
         self._deadline = self._started + max_seconds
@@ -421,7 +423,7 @@ class Agent:
             action["original_event_id"] = self._completed[key]
             self._tool_result(call, "ALREADY_EXECUTED: 같은 변경 작업은 다시 실행하지 않았다. 현재 메트릭을 확인하라.")
         elif decision.action == "approval":
-            request_id = f"approval_{len(self.approvals) + 1:03d}"
+            request_id = f"approval_{self.run_id}_{len(self.approvals) + 1:03d}"
             record = {"id": request_id, "command": cmd, "target": key.target,
                 "operation": key.operation, "status": "pending", "request_event_id": action["event_id"]}
             self.approvals[request_id] = record
@@ -498,7 +500,7 @@ class Agent:
         telemetry = dict(getattr(self.llm, "telemetry", {"api_calls": 0, "mode": "test_double"}))
         self.stats["llm_calls"] = telemetry.get("api_calls", 0)
         self.report = self._safe({
-            "schema_version": 1, "scenario": self.cluster.scenario, "incident": self.incident,
+            "schema_version": 1, "run_id": self.run_id, "scenario": self.cluster.scenario, "incident": self.incident,
             "summary": labels[recovery], "recovery_status": recovery, "termination": termination,
             "termination_reason": reason, "human_handoff": handoff,
             "execution_failed": bool(failed), "symptoms_resolved": health["symptoms_resolved"],

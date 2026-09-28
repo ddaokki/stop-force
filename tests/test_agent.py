@@ -53,6 +53,28 @@ def provider_reply(name, args, native, *, finish_reason=None, refusal=None):
 
 
 class AgentTests(unittest.TestCase):
+    def test_approval_from_another_run_cannot_resolve_current_request(self):
+        previous = make_agent(FakeLLM([command("kubectl rollout undo deployment/payment-worker")]))
+        current = make_agent(FakeLLM([command("kubectl rollout undo deployment/checkout-api"), call("finish", FINISH)]),
+                             scenario="bad_deploy")
+        previous.run()
+        current.run()
+        old_id, current_id = previous.pending["id"], current.pending["id"]
+        self.assertNotEqual(previous.run_id, current.run_id)
+        self.assertNotEqual(old_id, current_id)
+        for approved in (True, False):
+            self.assertFalse(current.resolve(approved, request_id=old_id))
+            self.assertEqual(current.pending["id"], current_id)
+            self.assertEqual(current.cluster.attempted, [])
+            self.assertEqual(current.stats["chat_calls"], 1)
+        self.assertTrue(current.resolve(True, request_id=current_id))
+        self.assertEqual(current.report["termination"], "finish")
+        self.assertEqual(current.report["recovery_status"], "recovered")
+        self.assertEqual(current.report["run_id"], current.run_id)
+        self.assertEqual(current.report["approvals"][0]["id"], current_id)
+        self.assertEqual(current.report["actions"][0]["approval_id"], current_id)
+        self.assertEqual(len(current.cluster.executed), 1)
+
     def test_all_approved_scenarios(self):
         for scenario in ("db_leak", "bad_deploy", "disk_full"):
             with self.subTest(scenario=scenario):
