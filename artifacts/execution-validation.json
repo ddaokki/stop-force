@@ -1,0 +1,49 @@
+{
+  "verified_at_utc": "2026-09-28T13:33:10.242030+00:00",
+  "base_commit": "5121afac9b70f816c77344c065ba182f6ae302dc",
+  "checks": [
+    {
+      "command": "python -m unittest discover -s tests -v",
+      "exit_code": 0,
+      "summary": [
+        "Ran 58 tests in 9.771s",
+        "OK"
+      ]
+    },
+    {
+      "command": "python evaluate.py --output-dir .git/execution-evaluation",
+      "exit_code": 0,
+      "summary": [
+        "PASS: 9 scripted cases, 20 corpus cases; .git\\execution-evaluation\\summary.md"
+      ]
+    },
+    {
+      "command": "python cli.py bad_deploy --demo --auto-approve --json .git/execution-cli.json --markdown .git/execution-cli.md",
+      "exit_code": 0,
+      "summary": []
+    }
+  ],
+  "cli_recovery": "recovered",
+  "additional_live_api_calls": 0,
+  "source_hash_algorithm": "SHA256 of source bytes normalized to LF",
+  "source_hashes": {
+    "app.py": "37654b22aebdcb4bb004eb0e270791da154ff4c99e06181cfc44f300a70669e6",
+    "cli.py": "4edb7be91241f0d7164c0e1c5d3eaef8f00f892ad6d8a4edc4475ba1e835a1f1",
+    "evaluate.py": "b67aa2adb3279783638490c12792523b289c0c6acbfb747a50e66d5704a8a4b1",
+    "policy.yaml": "5dc5d6b023eeb1e5b6e3526b951ba78c6d47b980cb1b6edf5f5caa943910fff7",
+    "stopforce/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stopforce/agent.py": "e96ec7b471bcee2d1ad2a630978aadc33c0e4de028a88b8af8f404aeeb82119b",
+    "stopforce/cluster.py": "5581032bf3e8cf92d4e3541ee46e4c72d79d2fb977d4e0c26c49d6f287bcf304",
+    "stopforce/commands.py": "080b7cbee1a9e96fca48e18325a03d51506198458c7c2d982007d1b795fc0cba",
+    "stopforce/llm.py": "d5d1624d1270952ebe2758c839a5d02bdae2646bc573305c6d10e3657908ddd3",
+    "stopforce/policy.py": "12ca1d70bd0e8369d9edc27b5342c844d8bd720611d1ef2031952d8ba04f01f7",
+    "stopforce/reporting.py": "7ecb78610882faef9d40c5f38f184397ed01e8885274c42c7853b617281a1f7c",
+    "stopforce/skills.py": "4f8bb5c1bafa0454341c2b111579a666cac876346b2d5b7fdc3a3819d916307e",
+    "tests/test_agent.py": "7715099cbd39914734f80b54b4feb8c119fc5f5a44da8ecc50965a66c3d858dc",
+    "tests/test_cli.py": "ecb44658b5cc45424e8208ec604ece2cf6bddcbc5fb22910ee95ef103f8936a6",
+    "tests/test_evaluate.py": "83b0ae409bcda1d63aa78ae93a27f2d8f235c896ff9f78362dc19241beee40f3",
+    "tests/test_llm.py": "61835f24bf83a767c68f65ceee80193fe25c3abd71ccc7ef79f8a5c2d5039644",
+    "tests/test_policy_cluster.py": "90c7646836df9382f6743d66096ab6111c95aa55683fc4c2f1345cc6c56bf2b8",
+    "tests/test_ui.py": "adc76e3bb738bfa2da029248f9c8b57ae0b1203b17fefb5fcffc394d71ec6f06"
+  }
+}

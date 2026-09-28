@@ -2,7 +2,7 @@ import unittest
 from pathlib import Path
 
 from stopforce.commands import parse_command
-from stopforce.cluster import make_cluster
+from stopforce.cluster import ExecutionResult, make_cluster
 from stopforce.policy import Policy
 
 POLICY = Path(__file__).resolve().parents[1] / 'policy.yaml'
@@ -125,6 +125,68 @@ class HealthTests(unittest.TestCase):
             cluster.execute('systemctl enable --now logrotate.timer')
             self.assertTrue(cluster.health()['healthy'])
             self.assertEqual(cluster.health()['remaining_causes'], [])
+
+
+class ExecutionResultTests(unittest.TestCase):
+    def test_error_like_read_contents_are_successful(self):
+        for body in ('ERROR ordinary log line', 'error is a setting', 'unsupported is data', ''):
+            for kind in ('logs', 'file'):
+                with self.subTest(body=body, kind=kind):
+                    cluster = make_cluster('bad_deploy')
+                    if kind == 'logs':
+                        cluster.logs['checkout-api'] = [body]
+                        command = 'kubectl logs checkout-api'
+                    else:
+                        cluster.files['/etc/app/config.yaml'] = body
+                        command = 'cat /etc/app/config.yaml'
+                    result = cluster.execute_result(command)
+                    self.assertIsInstance(result, ExecutionResult)
+                    self.assertTrue(result.ok)
+                    self.assertIsNone(result.error_code)
+                    self.assertEqual(result.output, body if body or kind == 'file' else '(no matching lines)')
+                    self.assertEqual(cluster.attempted, [command])
+                    self.assertEqual(cluster.executed, [command])
+
+    def test_real_failures_are_explicit_and_not_successfully_recorded(self):
+        cases = [
+            ('kubectl get pods; anything', 'invalid_command', None),
+            ('kubectl rollout restart deployment/missing', 'invalid_command', None),
+            ('kubectl rollout restart deployment/nginx', 'unknown_target', 'service'),
+            ('kubectl rollout undo deployment/nginx', 'no_rollout_history', None),
+            ('kubectl logs checkout-api', 'logs_not_found', 'logs'),
+            ('cat /etc/app/config.yaml', 'file_not_found', 'file'),
+        ]
+        for command, error_code, remove in cases:
+            with self.subTest(command=command, error_code=error_code):
+                cluster = make_cluster('bad_deploy')
+                if remove == 'service':
+                    del cluster.services['nginx']
+                elif remove == 'logs':
+                    del cluster.logs['checkout-api']
+                elif remove == 'file':
+                    del cluster.files['/etc/app/config.yaml']
+                result = cluster.execute_result(command)
+                self.assertFalse(result.ok)
+                self.assertEqual(result.error_code, error_code)
+                self.assertTrue(result.output.startswith('error:'))
+                self.assertEqual(cluster.attempted, [command])
+                self.assertEqual(cluster.executed, [])
+
+    def test_string_wrapper_preserves_output_and_single_execution(self):
+        structured = make_cluster('bad_deploy')
+        legacy = make_cluster('bad_deploy')
+        for command in ('kubectl rollout undo deployment/checkout-api',
+                        'cat /etc/app/config.yaml', 'unsupported command'):
+            result = structured.execute_result(command)
+            output = legacy.execute(command)
+            self.assertIsInstance(output, str)
+            self.assertEqual(output, result.output)
+        self.assertEqual(legacy.health(), structured.health())
+        self.assertEqual(legacy.attempted, structured.attempted)
+        self.assertEqual(len(legacy.attempted), 3)
+        self.assertEqual(legacy.executed, structured.executed)
+        self.assertEqual(len(legacy.executed), 2)
+        self.assertEqual(legacy.services['checkout-api'].version, 'v2.3.1')
 
 
 class CurrentObservationTests(unittest.TestCase):

@@ -93,6 +93,8 @@ NVIDIA_MODEL=nvidia/nemotron-3.5-lightning-30b-a3b
 
 JSON 도구 인자의 반복 문자열과 문자 그대로의 `<think>`는 보존합니다. 표시 문장을 정리하는 기능이 검색어나 명령을 변경하지 않으며, 응답의 추론 블록에 들어 있는 JSON은 호출 후보에서 제외합니다. 도구 스키마나 인자 설정 오류는 도구 기능 미지원과 구분해 불필요한 JSON 재요청을 막습니다. DB 연결 조회와 로그 용량 조회는 현재 상태를 반영하며, 과거 로그는 과거 기록으로 보존합니다.
 
+명령 실행은 성공 여부와 출력 본문을 분리해서 반환합니다. 로그가 `ERROR`로 시작해도 조회에 성공했으면 정상 조회로 기록합니다. 실제 명령 실패와 예외는 도구 오류 제한에 포함합니다. 승인 직후 기한이 만료되거나 취소되면 승인 여부는 보존하고 실행 상태를 `not_executed`로 확정해, 실행하지 않은 작업이 대기 중으로 남지 않도록 합니다.
+
 외부 모델로 보내는 메시지와 도구 정의는 재귀적으로 비밀값을 가립니다. 보고서는 모델의 제안과 실제 실행을 구분하며, 최종 상태는 `recovered`, `mitigated`, `unresolved`, `destroyed`로 표시합니다. 실제 API 요청 횟수(실패 포함), 제공된 토큰 사용량, 요청 시간, 모델, 엔드포인트와 호출 방식도 기록합니다. `usage_responses`가 API 요청 수보다 작으면 토큰 합계는 응답이 확인된 요청만 포함합니다. 기본 샘플링은 temperature 0.6, top_p 0.95, max_tokens 2048, thinking OFF입니다. [NVIDIA 공식 설정 예시](https://github.com/NVIDIA-AI-Blueprints/nemotron-voice-agent/blob/main/docs/how-to/configure-llm.md)의 thinking 옵션을 사용하며 모델의 내부 추론 원문은 저장하지 않습니다.
 
 ## 재현 가능한 오프라인 검증
@@ -107,7 +109,7 @@ JSON 도구 인자의 반복 문자열과 문자 그대로의 `<think>`는 보�
 
 차단과 거부는 명령 시도 수, 무승인 실행은 성공한 실행 수를 분모로 계산합니다. 비밀값 누출 검사는 평가 코드에 열거한 합성 표식에 한정합니다. 고정 목록 통과를 모든 공격이나 모든 비밀값에 대한 보장으로 해석하지 않습니다. 테스트와 사전 작성 평가의 실제 NVIDIA API 호출 수는 0입니다.
 
-검증 환경: Windows, Python 3.12.9, OpenAI SDK 3.19.2, Streamlit 1.64.0. 추가 개선 후 자동 테스트 50개(화면 9가지 조합과 만료/중단 검사 포함), 평가 9개 사례와 고정 명령 20개 조합이 통과했습니다. [추가 검증과 소스 해시](artifacts/additional-validation.json)를 제공합니다. [수정 전후 9개 재현 결과](artifacts/baseline.json)와 [1차 검증 기록](artifacts/validation.json)은 첫 개선 당시의 기록입니다. 추가 개선은 오프라인과 API 대역으로 검증했으며 실제 NVIDIA API를 다시 호출하지 않았습니다. macOS와 Linux에서의 실행은 검증하지 않았습니다.
+검증 환경: Windows, Python 3.12.9, OpenAI SDK 3.19.2, Streamlit 1.64.0. 최신 자동 테스트 58개(화면 9가지 조합과 만료/중단 검사 포함), 평가 9개 사례와 고정 명령 20개 조합이 통과했습니다. CLI 데모의 복구와 JSON/Markdown 저장도 확인했습니다. [최신 검증과 소스 해시](artifacts/execution-validation.json)를 제공합니다. [수정 전후 9개 재현 결과](artifacts/baseline.json), [1차 검증](artifacts/validation.json), [2차 검증](artifacts/additional-validation.json)은 각 개선 당시의 기록입니다. 추가 개선은 오프라인과 API 대역으로 검증했으며 실제 NVIDIA API를 다시 호출하지 않았습니다. macOS와 Linux에서의 실행은 검증하지 않았습니다.
 
 ## 주요 파일
 

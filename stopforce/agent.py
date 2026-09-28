@@ -140,10 +140,12 @@ class Agent:
             return [self._safe(item) for item in value]
         return value
 
-    def _emit(self, kind, title, body="", **meta):
+    def _emit(self, kind, title, body="", *, links=(), **meta):
         ev = Event(kind, self._safe(title), self._safe(body), self._safe(meta),
                    id=f"e{len(self.events) + 1:04d}")
         self.events.append(ev)
+        for record, field_name in links:
+            record[field_name] = ev.id
         if self._on_event:
             self._on_event(ev)
         return ev.id
@@ -201,14 +203,16 @@ class Agent:
                 self._tool_result(p["call"], "DENIED_BY_POLICY: 승인 대상 문법/범위 또는 정책이 변경됨")
             else:
                 record["status"] = "approved"
-                record["decision_event_id"] = self._emit("approval", "온콜 엔지니어 승인", p["command"], request_id=p["id"])
+                action["approved"] = True
+                self._emit("approval", "온콜 엔지니어 승인", p["command"],
+                    links=((record, "decision_event_id"),), request_id=p["id"])
                 self._execute(p["call"], action, p["key"], approved=True)
         else:
             self._denied.add(p["key"])
             record["status"] = "denied"
             action["status"] = "denied"
-            record["decision_event_id"] = action["event_id"] = self._emit(
-                "approval", "온콜 엔지니어 거부", p["command"], request_id=p["id"])
+            self._emit("approval", "온콜 엔지니어 거부", p["command"],
+                links=((record, "decision_event_id"), (action, "event_id")), request_id=p["id"])
             self._tool_result(p["call"], "DENIED_BY_HUMAN: 해당 작업은 거부되었으며 재요청해도 실행하지 않는다.")
         self.run(on_event)
         return True
@@ -234,7 +238,7 @@ class Agent:
             category = getattr(exc, "category", "llm_error")
             self._finish(category, reason=f"{type(exc).__name__}: {exc}")
             return
-        if self.check_deadline():
+        if self.done or self.check_deadline():
             return
         if content:
             self._emit("thought", "모델 판단 (실행 사실은 하네스에서 검증)", content)
@@ -354,7 +358,9 @@ class Agent:
         action = {"command": cmd, "reason": args["reason"], "call_id": call["id"],
                   "policy": decision.action, "status": "attempted", "approval_id": None}
         self.actions.append(action)
-        action["event_id"] = self._emit("tool", "run_command 요청", cmd, reason=args["reason"])
+        self._emit("tool", "run_command 요청", cmd, links=((action, "event_id"),), reason=args["reason"])
+        if self.done:
+            return
         if decision.action == "deny":
             action["status"] = "blocked"
             action["event_id"] = self._emit("policy", "정책 차단 (DENY)", decision.reason, command=cmd)
@@ -393,21 +399,26 @@ class Agent:
             self._execute(call, action, key)
 
     def _execute(self, call, action, key, approved=False):
-        if self.check_deadline():
+        if self.done or self.check_deadline():
             return
         try:
-            out = self.cluster.execute(action["command"])
-            failed = out.lower().startswith(("error", "unsupported"))
+            result = self.cluster.execute_result(action["command"])
+            out, failed = result.output, not result.ok
+            error_code = result.error_code or "command_execution_failed"
         except Exception as exc:
             out = f"error: {type(exc).__name__}: {exc}"
             failed = True
+            error_code = "command_execution_failed"
         action.update(status="failed" if failed else "succeeded", approved=approved)
         action["result"] = self._safe(out)
         action["event_id"] = self._emit("execution", "실행 실패" if failed else "시뮬레이터 실행 완료",
             out, command=action["command"], approved=approved, approval_id=action["approval_id"])
-        if not failed:
+        if failed:
+            action["error_code"] = error_code
+            self._tool_error(call, out, error_code)
+        else:
             self._completed[key] = action["event_id"]
-        self._tool_result(call, ("APPROVED_BY_HUMAN. " if approved else "") + out)
+            self._tool_result(call, ("APPROVED_BY_HUMAN. " if approved else "") + out)
 
     def _finish(self, termination, explanation=None, reason=""):
         if self.done:
@@ -416,8 +427,14 @@ class Agent:
         self.queue = []
         if self.pending:
             self.approvals[self.pending["id"]]["status"] = "expired" if termination == "timeout" else "cancelled"
-            self.actions[self.pending["action_index"]]["status"] = "not_executed"
             self.pending = None
+        for action in self.actions:
+            if action["status"] in {"attempted", "awaiting_approval"}:
+                action.update(status="not_executed", not_executed_reason=termination)
+                action["event_id"] = self._emit("execution", "실행하지 않음", reason or termination,
+                    command=action["command"], approval_id=action["approval_id"])
+                if action["approval_id"]:
+                    self.approvals[action["approval_id"]]["closure_event_id"] = action["event_id"]
         explanation = explanation or {}
         health = self.cluster.health()
         recovery = health["recovery_status"]

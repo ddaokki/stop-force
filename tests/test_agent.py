@@ -201,6 +201,85 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(agent.pending["id"], request_id)
         self.assertIsNone(agent.report)
 
+    def test_log_or_file_contents_cannot_set_command_failure(self):
+        for cmd in ("kubectl logs nginx", "cat /etc/app/config.yaml"):
+            for body in ("ERROR expected log data", "error is a setting", "unsupported is a setting"):
+                with self.subTest(command=cmd, body=body):
+                    agent = make_agent(FakeLLM([command(cmd), call("finish", FINISH)]))
+                    agent.cluster.logs["nginx"] = [body]
+                    agent.cluster.files["/etc/app/config.yaml"] = body
+                    agent.run()
+                    self.assertEqual(agent.actions[0]["status"], "succeeded")
+                    self.assertEqual(agent.actions[0]["result"], body)
+                    self.assertFalse(agent.report["execution_failed"])
+                    self.assertEqual(agent.stats["tool_errors"], 0)
+                    self.assertEqual(agent.cluster.executed, [cmd])
+
+    def test_command_failures_count_toward_tool_error_limit(self):
+        agent = make_agent(FakeLLM([command("kubectl rollout undo deploy/nginx")] * 4 + [call("finish", FINISH)]))
+        agent.run()
+        while agent.pending:
+            agent.resolve(True)
+        self.assertEqual(agent.report["termination"], "tool_errors")
+        self.assertEqual(agent.stats["tool_errors"], 3)
+        self.assertEqual(len(agent.actions), 3)
+        self.assertEqual(len(agent.cluster.attempted), 3)
+        self.assertEqual(agent.cluster.executed, [])
+        self.assertTrue(all(a["status"] == "failed" for a in agent.actions))
+        errors = [json.loads(m["content"]) for m in agent.messages if m["role"] == "tool"]
+        self.assertTrue(all(e["ok"] is False and e["error"]["code"] for e in errors))
+
+    def test_exception_during_command_is_repairable_and_counted(self):
+        agent = make_agent(FakeLLM([command("df -h"), call("finish", FINISH)]))
+        with patch.object(agent.cluster, "execute_result", side_effect=RuntimeError('password="private failure"')):
+            agent.run()
+        self.assertEqual(agent.report["termination"], "finish")
+        self.assertEqual(agent.stats["tool_errors"], 1)
+        self.assertEqual(agent.actions[0]["status"], "failed")
+        self.assertNotIn("private failure", json.dumps(agent.export()))
+
+    def test_approved_but_expired_action_is_terminal_and_has_evidence(self):
+        agent = make_agent(FakeLLM([command("kubectl rollout undo deploy/payment-worker")]))
+        agent.run()
+
+        def expire_after_approval(event):
+            if event.kind == "approval":
+                agent._deadline = 0
+
+        agent.resolve(True, expire_after_approval)
+        self.assertEqual(agent.report["termination"], "timeout")
+        self.assertEqual(agent.cluster.executed, [])
+        action = agent.report["actions"][0]
+        approval = agent.report["approvals"][0]
+        self.assertEqual(action["status"], "not_executed")
+        self.assertEqual(action["not_executed_reason"], "timeout")
+        self.assertTrue(action["approved"])
+        self.assertEqual(approval["status"], "approved")
+        self.assertEqual(approval["closure_event_id"], action["event_id"])
+        event = next(e for e in agent.events if e.id == action["event_id"])
+        self.assertEqual(event.title, "실행하지 않음")
+        self.assertEqual(agent.report["actions_taken"], [])
+
+    def test_cancellation_while_preparing_or_approving_prevents_execution(self):
+        for cancel_at in ("run_command 요청", "온콜 엔지니어 승인"):
+            with self.subTest(cancel_at=cancel_at):
+                agent = make_agent(FakeLLM([command("kubectl rollout undo deploy/payment-worker")]))
+
+                def cancel(event):
+                    if event.title == cancel_at:
+                        agent.cancel("작업 취소")
+
+                agent.run(cancel)
+                if agent.pending:
+                    agent.resolve(True, cancel)
+                self.assertEqual(agent.report["termination"], "cancelled")
+                self.assertEqual(agent.cluster.attempted, [])
+                self.assertEqual(agent.actions[0]["status"], "not_executed")
+                self.assertEqual(agent.report["actions"][0]["status"], "not_executed")
+                self.assertEqual(agent.report["actions"], agent.actions)
+                self.assertEqual(agent.report["approvals"], list(agent.approvals.values()))
+                self.assertIsNone(agent.pending)
+
 
 if __name__ == "__main__":
     unittest.main()

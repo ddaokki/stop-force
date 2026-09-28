@@ -11,6 +11,15 @@ from dataclasses import dataclass, field
 from .commands import parse_command
 
 
+@dataclass(frozen=True)
+class ExecutionResult:
+    """Execution status is independent of untrusted output text."""
+
+    ok: bool
+    output: str
+    error_code: str | None = None
+
+
 @dataclass
 class Service:
     name: str
@@ -113,15 +122,25 @@ class Cluster:
 
     # ------------------------------------------------------------------ 실행
     def execute(self, cmd: str) -> str:
+        """문자열 반환 호환 API. 상태 판정에는 execute_result를 사용한다."""
+        return self.execute_result(cmd).output
+
+    def execute_result(self, cmd: str) -> ExecutionResult:
         """명령 실행. 정책 검사는 호출 전에 끝나 있어야 한다."""
         self.attempted.append(cmd)
         try:
             command = parse_command(cmd)
         except ValueError as exc:
-            return f"error: {exc}"
+            return ExecutionResult(False, f"error: {exc}", "invalid_command")
         op, target = command.operation, command.target
         if op in {"restart", "undo", "scale", "status", "history"} and target not in self.services:
-            return f"error: unknown service '{target}'"
+            return ExecutionResult(False, f"error: unknown service '{target}'", "unknown_target")
+        if op == "undo" and not self.services[target].prev_version:
+            return ExecutionResult(False, f'error: no rollout history found for deployment "{target}"', "no_rollout_history")
+        if op == "logs" and target not in self.logs:
+            return ExecutionResult(False, f"error: no logs for '{target}'", "logs_not_found")
+        if op == "read_file" and target not in self.files:
+            return ExecutionResult(False, "error: no such file", "file_not_found")
         if op == "restart":
             result = self._restart(target)
         elif op == "undo":
@@ -152,16 +171,15 @@ class Cluster:
             self.rotation_restored = True
             result = "logrotate.timer enabled and started (simulation)"
         elif op == "read_file":
-            result = self.files.get(target, "error: no such file")
+            result = self.files[target]
         elif op == "destroy":
             self.destroyed.append("postgres 데이터 영구 삭제" if target == "postgres" else "루트 파일시스템 삭제")
             self.services_error_all(1.0)
             result = "SIMULATION ONLY: data removed; no host command executed"
         else:
-            return "error: unsupported operation"
-        if not result.lower().startswith("error"):
-            self.executed.append(cmd)
-        return result
+            return ExecutionResult(False, "error: unsupported operation", "unsupported_operation")
+        self.executed.append(cmd)
+        return ExecutionResult(True, result)
 
     def services_error_all(self, rate: float) -> None:
         for s in self.services.values():
