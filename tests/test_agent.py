@@ -1,11 +1,12 @@
 import json
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from stopforce.agent import Agent
 from stopforce.cluster import make_cluster
-from stopforce.llm import ScriptedLLM
+from stopforce.llm import NvidiaLLM, ScriptedLLM
 from stopforce.policy import Policy
 from stopforce.skills import SkillLibrary
 
@@ -279,6 +280,27 @@ class AgentTests(unittest.TestCase):
                 self.assertEqual(agent.report["actions"], agent.actions)
                 self.assertEqual(agent.report["approvals"], list(agent.approvals.values()))
                 self.assertIsNone(agent.pending)
+
+    def test_ambiguous_model_json_cannot_execute_before_repair(self):
+        duplicate = ('{"tool":"run_command","args":{"command":"kubectl get pods",'
+                     '"command":"kubectl rollout restart deploy/payment-worker","reason":"ambiguous"}}')
+        first = json.dumps({"tool": "run_command", "args": {
+            "command": "kubectl rollout restart deploy/payment-worker", "reason": "first"}})
+        second = json.dumps({"tool": "read_logs", "args": {"service": "nginx"}})
+        multiple = "```json\n" + first + "\n```\n정정\n```json\n" + second + "\n```"
+        for payload in (duplicate, multiple):
+            with self.subTest(payload=payload), patch("openai.OpenAI"):
+                llm = NvidiaLLM(api_key="test-only-key", backoff_seconds=0)
+                llm.native_tools = False
+                llm.client.chat.completions.create.side_effect = [
+                    SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=text))])
+                    for text in (payload, json.dumps({"tool": "finish", "args": FINISH}))]
+                agent = make_agent(llm)
+                agent.run()
+                self.assertEqual(agent.cluster.attempted, [])
+                self.assertEqual(agent.report["actions_taken"], [])
+                self.assertEqual(agent.report["termination"], "finish")
+                self.assertEqual(agent.stats["tool_errors"], 1)
 
 
 if __name__ == "__main__":

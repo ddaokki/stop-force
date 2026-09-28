@@ -47,8 +47,9 @@ def read_approval(agent):
 
 
 def main():
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser()
     ap.add_argument("scenario", nargs="?", default="db_leak", choices=list(SCENARIOS))
     ap.add_argument("--demo", action="store_true", help="사전 작성 시나리오 (실제 API 호출 0회)")
@@ -60,12 +61,29 @@ def main():
     ap.add_argument("--markdown", type=Path, help="읽기 쉬운 장애 보고서 저장")
     args = ap.parse_args()
 
+    outputs = [path for path in (args.json, args.markdown) if path is not None]
+    try:
+        if len(outputs) == 2 and (outputs[0].resolve() == outputs[1].resolve() or
+                (all(path.exists() for path in outputs) and outputs[0].samefile(outputs[1]))):
+            ap.error("JSON과 Markdown은 서로 다른 파일에 저장해야 합니다.")
+        for path in outputs:
+            if path.exists() and not path.is_file():
+                ap.error("보고서 저장 경로는 디렉터리가 아닌 파일이어야 합니다.")
+            if any(parent.exists() and not parent.is_dir() for parent in path.parents):
+                ap.error("보고서의 상위 경로에 파일이 있습니다. 저장 폴더를 확인하세요.")
+    except OSError:
+        ap.error("보고서 저장 경로를 확인할 수 없습니다. 경로와 접근 권한을 확인하세요.")
+
     if not args.demo and not os.getenv("NVIDIA_API_KEY"):
         ap.error("실제 NVIDIA 모드에는 .env의 NVIDIA_API_KEY가 필요합니다. 사전 작성 시연은 --demo를 지정하세요.")
-    llm = ScriptedLLM(args.scenario) if args.demo else NvidiaLLM()
-    cl = make_cluster(args.scenario)
-    agent = Agent(cl, Policy(ROOT / "policy.yaml", enabled=not args.no_policy),
-                  SkillLibrary(ROOT / "skills"), llm, SCENARIOS[args.scenario]["incident"])
+    try:
+        llm = ScriptedLLM(args.scenario) if args.demo else NvidiaLLM()
+        cl = make_cluster(args.scenario)
+        agent = Agent(cl, Policy(ROOT / "policy.yaml", enabled=not args.no_policy),
+                      SkillLibrary(ROOT / "skills"), llm, SCENARIOS[args.scenario]["incident"])
+    except Exception as exc:
+        # Configuration values and provider exception bodies can contain secrets.
+        ap.error(f"실행 설정을 읽을 수 없습니다 ({type(exc).__name__}). .env, policy.yaml, skills 경로를 확인하세요.")
     print(f"== {SCENARIOS[args.scenario]['title']}  [{llm.label}]\n")
 
     def show(ev):
@@ -95,10 +113,14 @@ def main():
         agent.cancel("터미널 실행 또는 승인 입력 중단")
     print("\n최종 상태:", cl.health())
     print("통계:", agent.stats)
-    for path, content in ((args.json, report_json(agent)), (args.markdown, report_markdown(agent))):
-        if path:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content, encoding="utf-8")
+    try:
+        for path, content in ((args.json, report_json(agent)), (args.markdown, report_markdown(agent))):
+            if path:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content, encoding="utf-8")
+    except OSError:
+        print("보고서 저장에 실패했습니다. 저장 경로, 디스크 공간과 쓰기 권한을 확인하세요.", file=sys.stderr)
+        return 1
     # A controlled refusal/partial recovery is a valid demo outcome. API/harness failures are not.
     return 0 if agent.report["termination"] == "finish" else 1
 

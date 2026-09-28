@@ -105,6 +105,80 @@ class NvidiaTests(unittest.TestCase):
                         self.assertEqual(result["tool_calls"][0]["name"], "read_logs")
                         self.assertEqual(result["tool_calls"][0]["arguments"], args)
 
+    def test_json_string_delimiters_preserved_and_not_displayed(self):
+        args = {"service": "nginx", "grep": '```json {"nested": ["}"]} ``` <think>literal</think>'}
+        payload = json.dumps({"tool": "read_logs", "args": args})
+        for native in (True, False):
+            for fenced in (True, False):
+                with self.subTest(native=native, fenced=fenced):
+                    body = "```json\n" + payload + "\n```" if fenced else payload
+                    llm = self.make([response("조회합니다.\n" + body + "\n결과를 확인합니다.")])
+                    llm.native_tools = native
+                    result = llm.chat([], [])
+                    self.assertEqual(result["tool_calls"][0]["arguments"], args)
+                    self.assertEqual(result["content"], "조회합니다.\n\n결과를 확인합니다.")
+                    self.assertNotIn("nested", result["content"])
+
+    def test_multiple_text_calls_rejected_including_correction(self):
+        first = json.dumps({"tool": "run_command", "args": {
+            "command": "kubectl rollout restart deployment/payment-worker", "reason": "first"}})
+        second = json.dumps({"tool": "read_logs", "args": {"service": "nginx"}})
+        for native in (True, False):
+            for fenced in (True, False):
+                with self.subTest(native=native, fenced=fenced):
+                    wrap = lambda value: "```json\n" + value + "\n```" if fenced else value
+                    llm = self.make([response(wrap(first) + "\n정정: 아래 조회만 실행\n" + wrap(second))])
+                    llm.native_tools = native
+                    result = llm.chat([], [])
+                    self.assertEqual(result["tool_calls"][0]["parse_error"], "multiple_tool_calls")
+                    self.assertIsNone(result["tool_calls"][0]["arguments"])
+                    self.assertEqual(result["content"], "정정: 아래 조회만 실행")
+
+    def test_prose_labels_and_placeholders_do_not_hide_call(self):
+        payload = '{"tool":"read_logs","args":{"service":"nginx"}}'
+        for native in (True, False):
+            for prefix in ("[계획] 로그 확인", "{service} 로그 확인", "[계획] {service} 로그 확인"):
+                with self.subTest(native=native, prefix=prefix):
+                    llm = self.make([response(prefix + "\n```json\n" + payload + "\n```")])
+                    llm.native_tools = native
+                    result = llm.chat([], [])
+                    self.assertEqual(result["tool_calls"][0]["name"], "read_logs")
+                    self.assertEqual(result["tool_calls"][0]["arguments"], {"service": "nginx"})
+                    self.assertEqual(result["content"], prefix)
+
+    def test_malformed_outer_call_cannot_expose_nested_call(self):
+        nested = '{"tool":"run_command","args":{"command":"kubectl get pods","reason":"nested"}}'
+        for native in (True, False):
+            for body in ('{tool:' + nested + '}', '```json\n{broken:' + nested + '}\n```'):
+                with self.subTest(native=native, body=body):
+                    llm = self.make([response("[계획]\n" + body)])
+                    llm.native_tools = native
+                    result = llm.chat([], [])
+                    self.assertEqual(result["tool_calls"][0]["parse_error"], "invalid_json")
+                    self.assertIsNone(result["tool_calls"][0]["arguments"])
+
+    def test_strict_json_rejects_duplicates_and_nonfinite_constants(self):
+        invalid_args = [
+            '{"command":"kubectl get pods","command":"kubectl rollout restart deployment/payment-worker"}',
+            '{"nested":{"key":1,"key":2}}',
+            '{"lines":NaN}', '{"lines":Infinity}', '{"lines":-Infinity}',
+        ]
+        for args in invalid_args:
+            with self.subTest(args=args, path="native_arguments"):
+                llm = self.make([response(arguments=args)])
+                self.assertIn("parse_error", llm.chat([], [])["tool_calls"][0])
+            for native in (True, False):
+                with self.subTest(args=args, path="text", native=native):
+                    llm = self.make([response('```json\n{"tool":"run_command","args":' + args + '}\n```')])
+                    llm.native_tools = native
+                    result = llm.chat([], [])
+                    self.assertIn("parse_error", result["tool_calls"][0])
+                    self.assertEqual(result["content"], "")
+        for native in (True, False):
+            llm = self.make([response('{"tool":"read_logs","tool":"run_command","args":{}}')])
+            llm.native_tools = native
+            self.assertIn("parse_error", llm.chat([], [])["tool_calls"][0])
+
     def test_deadline_bounds_request_and_backoff(self):
         llm = self.make([response()])
         llm.set_deadline(time.monotonic() + 1)

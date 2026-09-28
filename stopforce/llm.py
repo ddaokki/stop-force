@@ -17,7 +17,6 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 THINK_RE = re.compile(r"<think>.*?</think>", re.S)
-JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.S)
 
 DEFAULT_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
 BASE_URL = "https://integrate.api.nvidia.com/v1"
@@ -109,27 +108,73 @@ def _classify(exc):
     return LLMError(category, status)
 
 
-def _extract_json_call(text: str) -> dict | None:
-    """텍스트에서 {"tool": ..., "args": {...}} 형태를 찾는다."""
-    candidates = JSON_BLOCK_RE.findall(text)
-    if not candidates:
-        m = re.search(r"\{[^{}]*\"tool\"\s*:.*\}", text, re.S)
-        if m:
-            candidates = [m.group(0)]
-        elif text.lstrip().startswith("{"):
-            candidates = [text.strip()]
-    for c in candidates:
+def _unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate_json_key")
+        result[key] = value
+    return result
+
+
+def _reject_constant(value):
+    raise ValueError("nonstandard_json_number")
+
+
+STRICT_JSON = json.JSONDecoder(object_pairs_hook=_unique_object, parse_constant=_reject_constant)
+
+
+def _parse_text_call(text: str) -> tuple[dict | None, str]:
+    """Decode whole JSON values and remove those same spans from display prose."""
+    objects, spans = [], []
+    offset = 0
+    error = None
+    while match := re.search(r"[\[{]", text[offset:]):
+        start = offset + match.start()
+        prefix = re.search(r"```(?:json)?\s*$", text[:start])
+        # Skip complete prose labels/placeholders, not malformed JSON prefixes.
+        # A fenced value always remains a protocol candidate, even if invalid.
+        placeholder = re.match(r"\{[\w-]+\}|\[[^\[\]{}\"\r\n]*\]", text[start:])
+        json_array = re.match(r'\[\s*(?:[\[\]{"\d-]|true\b|false\b|null\b|NaN\b|Infinity\b)', text[start:])
+        if not prefix and placeholder and not json_array:
+            offset = start + placeholder.end()
+            continue
+        span_start = prefix.start() if prefix else start
         try:
-            obj = json.loads(c)
-        except json.JSONDecodeError:
-            return {"id": _new_id(), "name": "", "arguments": None, "parse_error": "invalid_json"}
-        if isinstance(obj, dict) and "tool" in obj:
-            call = {"id": _new_id(), "name": obj["tool"], "arguments": obj.get("args")}
-            if not isinstance(call["arguments"], dict):
-                call["parse_error"] = "arguments_must_be_object"
-            return call
-        return {"id": _new_id(), "name": "", "arguments": None, "parse_error": "invalid_tool_call"}
-    return None
+            obj, end = STRICT_JSON.raw_decode(text, start)
+        except (ValueError, RecursionError):
+            # Never expose or try to salvage the interior of a malformed call.
+            spans.append((span_start, len(text)))
+            error = "invalid_json"
+            break
+        objects.append(obj)
+        closing = re.match(r"\s*```", text[end:]) if prefix else None
+        span_end = end + closing.end() if closing else end
+        spans.append((span_start, span_end))
+        offset = span_end
+    visible, offset = [], 0
+    for start, end in spans:
+        visible.append(text[offset:start])
+        offset = end
+    visible.append(text[offset:])
+    prose = _clean("".join(visible))
+    if not objects and error is None:
+        return None, prose
+    if len(objects) > 1:
+        error = "multiple_tool_calls"
+    if error:
+        return {"id": _new_id(), "name": "", "arguments": None, "parse_error": error}, prose
+    obj = objects[0]
+    if not isinstance(obj, dict) or "tool" not in obj:
+        return {"id": _new_id(), "name": "", "arguments": None, "parse_error": "invalid_tool_call"}, prose
+    call = {"id": _new_id(), "name": obj["tool"], "arguments": obj.get("args")}
+    if not isinstance(call["arguments"], dict):
+        call["parse_error"] = "arguments_must_be_object"
+    return call, prose
+
+
+def _extract_json_call(text: str) -> dict | None:
+    return _parse_text_call(text)[0]
 
 
 class NvidiaLLM:
@@ -278,19 +323,19 @@ class NvidiaLLM:
         calls = []
         for tc in m.tool_calls or []:
             try:
-                args = json.loads(tc.function.arguments)
+                args = STRICT_JSON.decode(tc.function.arguments)
                 parse_error = None if isinstance(args, dict) else "arguments_must_be_object"
-            except (json.JSONDecodeError, TypeError):
+            except (ValueError, TypeError, RecursionError):
                 args, parse_error = None, "invalid_json"
             call = {"id": tc.id or _new_id(), "name": tc.function.name, "arguments": args}
             if parse_error:
                 call["parse_error"] = parse_error
             calls.append(call)
         if not calls and raw_content:
-            c = _extract_json_call(raw_content)
+            c, visible = _parse_text_call(raw_content)
             if c:
                 calls = [c]
-                content = "" if raw_content.lstrip().startswith("{") else _clean(JSON_BLOCK_RE.sub("", raw_content))
+                content = visible
         return {"content": content, "tool_calls": calls, "native": True}
 
     def _chat_json(self, messages, tools) -> dict:
@@ -323,8 +368,7 @@ class NvidiaLLM:
         raw_content = _without_thinking(r.choices[0].message.content or "")
         # Parse data before presentation cleanup: repeated text and literal think
         # tags inside JSON strings are tool arguments, not disposable prose.
-        call = _extract_json_call(raw_content)
-        visible = "" if call and raw_content.lstrip().startswith("{") else _clean(JSON_BLOCK_RE.sub("", raw_content))
+        call, visible = _parse_text_call(raw_content)
         return {"content": visible, "tool_calls": [call] if call else [], "native": False}
 
 
